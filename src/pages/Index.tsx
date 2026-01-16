@@ -24,6 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 import { Plus, AlertTriangle, Bell, Clock, CheckCircle2 } from "lucide-react";
 
 const Index = () => {
@@ -56,17 +57,29 @@ const Index = () => {
     };
   }, [tasks]);
 
-  // Filter and sort tasks
-  const displayedTasks = useMemo(() => {
+  // Filter and group tasks by priority
+  const taskGroups = useMemo(() => {
     const filtered = filterTasksByCategory(tasks, selectedCategory);
-    return sortTasksByUrgency(filtered);
+    const pending = filtered.filter((t) => !t.completed);
+    const completed = filtered.filter((t) => t.completed);
+
+    // Group pending tasks by urgency level
+    const urgent = pending.filter((t) => getUrgencyLevel(t) === "urgent");
+    const warning = pending.filter((t) => getUrgencyLevel(t) === "warning");
+    const upcoming = pending.filter((t) => getUrgencyLevel(t) === "upcoming");
+    const normal = pending.filter((t) => getUrgencyLevel(t) === "normal");
+
+    return { urgent, warning, upcoming, normal, completed };
   }, [tasks, selectedCategory]);
 
-  const pendingTasks = displayedTasks.filter((t) => !t.completed);
-  const completedTasks = displayedTasks.filter((t) => t.completed);
-
-  const handleAddTask = (taskData: Omit<ComplianceTask, "id" | "completed">) => {
-    addTask(taskData);
+  const handleAddTask = async (taskData: Omit<ComplianceTask, "id" | "completed">) => {
+    try {
+      await addTask(taskData);
+      toast.success("Task added successfully");
+    } catch (error: any) {
+      console.error("Error adding task:", error);
+      toast.error(error.message || "Failed to add task. Please try again.");
+    }
   };
 
   const handleEditTask = (task: ComplianceTask) => {
@@ -74,15 +87,28 @@ const Index = () => {
     setDialogOpen(true);
   };
 
-  const handleUpdateTask = (id: string, updates: Partial<ComplianceTask>) => {
-    updateTask(id, updates);
-    setEditingTask(null);
+  const handleUpdateTask = async (id: string, updates: Partial<ComplianceTask>) => {
+    try {
+      await updateTask(id, updates);
+      setEditingTask(null);
+      toast.success("Task updated successfully");
+    } catch (error: any) {
+      console.error("Error updating task:", error);
+      toast.error(error.message || "Failed to update task. Please try again.");
+    }
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (deleteConfirmId) {
-      deleteTask(deleteConfirmId);
-      setDeleteConfirmId(null);
+      try {
+        await deleteTask(deleteConfirmId);
+        setDeleteConfirmId(null);
+        toast.success("Task deleted successfully");
+      } catch (error: any) {
+        console.error("Error deleting task:", error);
+        toast.error(error.message || "Failed to delete task. Please try again.");
+        setDeleteConfirmId(null);
+      }
     }
   };
 
@@ -144,20 +170,29 @@ const Index = () => {
           </Button>
         </div>
 
-        {/* Task List */}
+        {/* Task List - Prioritized by Urgency */}
         {tasks.length === 0 ? (
           <EmptyState onAddTask={handleOpenNewTask} />
         ) : (
-          <div className="space-y-8">
-            {/* Pending Tasks */}
-            {pendingTasks.length > 0 && (
-              <section>
-                <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-primary" />
-                  Pending Tasks ({pendingTasks.length})
-                </h2>
+          <div className="space-y-6">
+            {/* Urgent Tasks - Highest Priority */}
+            {taskGroups.urgent.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="p-2 rounded-lg bg-destructive/10">
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-destructive">
+                      🔴 Urgent - Action Required
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      {taskGroups.urgent.length} task{taskGroups.urgent.length !== 1 ? 's' : ''} requiring immediate attention
+                    </p>
+                  </div>
+                </div>
                 <div className="grid gap-3">
-                  {pendingTasks.map((task) => (
+                  {taskGroups.urgent.map((task) => (
                     <TaskCard
                       key={task.id}
                       task={task}
@@ -170,15 +205,24 @@ const Index = () => {
               </section>
             )}
 
-            {/* Completed Tasks */}
-            {completedTasks.length > 0 && (
-              <section>
-                <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-success" />
-                  Completed ({completedTasks.length})
-                </h2>
+            {/* Warning Tasks */}
+            {taskGroups.warning.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="p-2 rounded-lg bg-orange-500/10">
+                    <AlertTriangle className="h-5 w-5 text-orange-500" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-orange-500">
+                      ⚠️ Warning - Due Soon
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      {taskGroups.warning.length} task{taskGroups.warning.length !== 1 ? 's' : ''} due within 3 days
+                    </p>
+                  </div>
+                </div>
                 <div className="grid gap-3">
-                  {completedTasks.map((task) => (
+                  {taskGroups.warning.map((task) => (
                     <TaskCard
                       key={task.id}
                       task={task}
@@ -191,11 +235,106 @@ const Index = () => {
               </section>
             )}
 
-            {pendingTasks.length === 0 && completedTasks.length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">
-                No tasks found in this category.
-              </div>
+            {/* Upcoming Tasks */}
+            {taskGroups.upcoming.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="p-2 rounded-lg bg-yellow-500/10">
+                    <Bell className="h-5 w-5 text-yellow-500" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-yellow-500">
+                      📅 Upcoming - Plan Ahead
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      {taskGroups.upcoming.length} task{taskGroups.upcoming.length !== 1 ? 's' : ''} due within 5 days
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-3">
+                  {taskGroups.upcoming.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      onComplete={completeTask}
+                      onEdit={handleEditTask}
+                      onDelete={(id) => setDeleteConfirmId(id)}
+                    />
+                  ))}
+                </div>
+              </section>
             )}
+
+            {/* Normal Tasks */}
+            {taskGroups.normal.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <Clock className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">
+                      📋 Normal Priority
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      {taskGroups.normal.length} task{taskGroups.normal.length !== 1 ? 's' : ''} with upcoming deadlines
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-3">
+                  {taskGroups.normal.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      onComplete={completeTask}
+                      onEdit={handleEditTask}
+                      onDelete={(id) => setDeleteConfirmId(id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Completed Tasks - Collapsible */}
+            {taskGroups.completed.length > 0 && (
+              <section className="space-y-3 border-t pt-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="p-2 rounded-lg bg-success/10">
+                    <CheckCircle2 className="h-5 w-5 text-success" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-success">
+                      ✅ Completed Tasks
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      {taskGroups.completed.length} completed task{taskGroups.completed.length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-3">
+                  {taskGroups.completed.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      onComplete={completeTask}
+                      onEdit={handleEditTask}
+                      onDelete={(id) => setDeleteConfirmId(id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Empty State */}
+            {taskGroups.urgent.length === 0 &&
+              taskGroups.warning.length === 0 &&
+              taskGroups.upcoming.length === 0 &&
+              taskGroups.normal.length === 0 &&
+              taskGroups.completed.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                  No tasks found in this category.
+                </div>
+              )}
           </div>
         )}
       </main>

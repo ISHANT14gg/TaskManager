@@ -1,73 +1,144 @@
-# Welcome to your Lovable project
+# Compliance Tracker
 
-## Project info
+A comprehensive task management system for Indian statutory compliance deadlines including GST, Income Tax, Insurance, and Transport requirements.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Features
 
-## How can I edit this code?
+- ✅ **Task Management**: Create, update, and track compliance tasks
+- ✅ **Priority-Based Dashboard**: Tasks organized by urgency (Urgent, Warning, Upcoming, Normal)
+- ✅ **User Authentication**: Secure signup, login, password reset, and email verification
+- ✅ **Admin Dashboard**: User management and system administration
+- ✅ **Email Reminders**: Automated email notifications for tasks due within 5 days
+- ✅ **Role-Based Access**: Admin and user roles with appropriate permissions
 
-There are several ways of editing your application.
+## Tech Stack
 
-**Use Lovable**
+- **Frontend**: React + TypeScript + Vite
+- **UI**: shadcn-ui + Tailwind CSS
+- **Backend**: Supabase (PostgreSQL + Auth + Edge Functions)
+- **Routing**: React Router
+- **State Management**: React Hooks
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Getting Started
 
-Changes made via Lovable will be committed automatically to this repo.
+### Prerequisites
 
-**Use your preferred IDE**
+- Node.js 18+ and npm
+- Supabase account and project
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Installation
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+1. **Clone the repository**
+   ```bash
+   git clone <your-repo-url>
+   cd compliance-companion-main
+   ```
 
-Follow these steps:
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+3. **Set up environment variables**
+   Create a `.env` file in the root directory:
+   ```env
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_KEY=your-anon-key
+   ```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+4. **Set up Supabase**
+   - Create a new Supabase project
+   - Run the migrations in `supabase/migrations/` folder
+   - Deploy the edge function (see Email Setup below)
 
-# Step 3: Install the necessary dependencies.
-npm i
+5. **Start development server**
+   ```bash
+   npm run dev
+   ```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+## Database Setup
+
+Run all migrations in order:
+
+```bash
+supabase migration up
 ```
 
-**Edit a file directly in GitHub**
+This will create:
+- `profiles` table (user profiles with roles)
+- `tasks` table (compliance tasks)
+- `notification_logs` table (email notification tracking)
+- RLS policies and security functions
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Email Setup
 
-**Use GitHub Codespaces**
+### 1. Deploy Edge Function
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```bash
+supabase functions deploy send-task-reminders
+```
 
-## What technologies are used for this project?
+### 2. Configure Email Service
 
-This project is built with:
+Set your email service API key:
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+```bash
+supabase secrets set RESEND_API_KEY=your_api_key_here
+```
 
-## How can I deploy this project?
+### 3. Update Email Settings
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+Edit `supabase/functions/send-task-reminders/index.ts` and update the `from` email address.
 
-## Can I connect a custom domain to my Lovable project?
+### 4. Set Up Cron Job
 
-Yes, you can!
+Configure a daily cron job to send reminders (see `EMAIL_SETUP.md` for details).
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## Project Structure
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+```
+├── src/
+│   ├── components/     # Reusable UI components
+│   ├── hooks/          # Custom React hooks
+│   ├── integrations/   # Supabase client and types
+│   ├── lib/            # Utility functions
+│   ├── pages/          # Page components
+│   └── utils/          # Helper utilities
+├── supabase/
+│   ├── functions/      # Edge functions
+│   └── migrations/     # Database migrations
+└── public/             # Static assets
+```
+
+## Available Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run lint` - Run ESLint
+
+## Deployment
+
+### Build
+
+```bash
+npm run build
+```
+
+### Deploy to Vercel/Netlify
+
+1. Connect your repository
+2. Set environment variables
+3. Deploy
+
+The built files will be in the `dist` directory.
+
+## Features Documentation
+
+- [Email Setup Guide](./EMAIL_SETUP.md)
+- [Deployment Checklist](./DEPLOYMENT_CHECKLIST.md)
+- [Database Troubleshooting](./TROUBLESHOOTING_DATABASE.md)
+
+## License
+
+MIT
