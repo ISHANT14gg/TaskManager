@@ -1,144 +1,68 @@
-/**
- * Email service utility
- * This can be used to trigger email reminders manually or integrate with your email service
- */
-
-import { supabase } from "@/integrations/supabase/client";
-
-export interface TaskReminder {
-  taskId: string;
-  userId: string;
-  userEmail: string;
-  userName: string;
-  taskName: string;
-  taskCategory: string;
-  deadline: Date;
-  daysUntilDeadline: number;
-}
-
-/**
- * Get tasks that need reminders (due within 5 days)
- */
-export async function getTasksForReminders(): Promise<TaskReminder[]> {
-  try {
-    const { data, error } = await supabase.rpc("get_tasks_for_reminders");
-
-    if (error) throw error;
-
-    return (data || []).map((task: any) => ({
-      taskId: task.task_id,
-      userId: task.user_id,
-      userEmail: task.user_email,
-      userName: task.user_name,
-      taskName: task.task_name,
-      taskCategory: task.task_category,
-      deadline: new Date(task.deadline),
-      daysUntilDeadline: task.days_until_deadline,
-    }));
-  } catch (error) {
-    console.error("Error fetching tasks for reminders:", error);
-    return [];
-  }
-}
-
-/**
- * Trigger email reminders via Supabase Edge Function
- * Make sure the edge function is deployed and configured
- */
 export async function triggerEmailReminders(): Promise<{
   success: boolean;
   message: string;
-  data?: any;
+  emailsSent?: number;
 }> {
   try {
-    // Get the Supabase URL from environment
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    console.log("Environment check:", {
+      hasUrl: !!supabaseUrl,
+      hasKey: !!supabaseKey,
+      url: supabaseUrl,
+    });
 
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error("Supabase configuration missing. Please check your environment variables.");
+      throw new Error(
+        `Missing environment variables: ${!supabaseUrl ? "VITE_SUPABASE_URL " : ""}${!supabaseKey ? "VITE_SUPABASE_ANON_KEY" : ""}`
+      );
     }
 
-    // Get current user session for authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) {
-      throw new Error("You must be logged in to send reminders.");
-    }
-
-    // Call the edge function
     const functionUrl = `${supabaseUrl}/functions/v1/send-task-reminders`;
-    
+    console.log("Calling function:", functionUrl);
+
     const response = await fetch(functionUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${supabaseKey}`,
         "apikey": supabaseKey,
       },
       body: JSON.stringify({}),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = "Failed to send email reminders";
-      
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch {
-        errorMessage = errorText || `HTTP ${response.status}: ${response.statusText}`;
-      }
+    console.log("Response status:", response.status);
+    console.log("Response headers:", {
+      "Access-Control-Allow-Origin": response.headers.get("Access-Control-Allow-Origin"),
+      "Access-Control-Allow-Methods": response.headers.get("Access-Control-Allow-Methods"),
+    });
 
-      // Check if function doesn't exist
-      if (response.status === 404) {
-        errorMessage = "Edge function not found. Please deploy the 'send-task-reminders' function first.";
-      }
-
-      throw new Error(errorMessage);
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      data = { message: response.statusText };
     }
+    
+    console.log("Response data:", data);
 
-    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(
+        data?.error || data?.message || `Server error: ${response.status}`
+      );
+    }
 
     return {
       success: true,
       message: data.message || "Email reminders sent successfully",
-      data,
+      emailsSent: data.sent || data.emailsSent || 0,
     };
   } catch (error: any) {
-    console.error("Error triggering email reminders:", error);
+    console.error("triggerEmailReminders error:", error);
     return {
       success: false,
-      message: error.message || "Failed to send email reminders. Please check if the edge function is deployed.",
+      message: error.message || "Failed to send email reminders",
     };
-  }
-}
-
-/**
- * Log notification attempt
- */
-export async function logNotification(
-  userId: string,
-  taskId: string,
-  channel: "email" | "whatsapp",
-  status: "sent" | "failed" | "pending",
-  message?: string,
-  errorMessage?: string
-): Promise<boolean> {
-  try {
-    const { error } = await supabase.from("notification_logs").insert({
-      user_id: userId,
-      task_id: taskId,
-      channel,
-      status,
-      message: message || null,
-      error_message: errorMessage || null,
-    });
-
-    if (error) throw error;
-    return true;
-  } catch (error) {
-    console.error("Error logging notification:", error);
-    return false;
   }
 }

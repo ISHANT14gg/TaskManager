@@ -61,7 +61,7 @@ A comprehensive task management system for Indian statutory compliance deadlines
 Run all migrations in order:
 
 ```bash
-supabase migration up
+supabase db push
 ```
 
 This will create:
