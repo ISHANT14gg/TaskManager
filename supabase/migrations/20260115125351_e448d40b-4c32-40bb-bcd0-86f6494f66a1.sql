@@ -1,5 +1,5 @@
 -- Create profiles table for user data and notification preferences
-CREATE TABLE public.profiles (
+CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   phone TEXT,
@@ -12,7 +12,7 @@ CREATE TABLE public.profiles (
 );
 
 -- Create tasks table
-CREATE TABLE public.tasks (
+CREATE TABLE IF NOT EXISTS public.tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE public.tasks (
 );
 
 -- Create notification_logs table
-CREATE TABLE public.notification_logs (
+CREATE TABLE IF NOT EXISTS public.notification_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   task_id UUID NOT NULL REFERENCES public.tasks(id) ON DELETE CASCADE,
