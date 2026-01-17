@@ -119,25 +119,49 @@ Configure a daily cron job to send reminders (see `EMAIL_SETUP.md` for details).
 
 ## Deployment
 
-### Build
+### Build for Production
 
 ```bash
 npm run build
 ```
 
-### Deploy to Vercel/Netlify
+### Deploy to Vercel
 
-1. Connect your repository
-2. Set environment variables
-3. Deploy
+1. **Push to GitHub** (if not already done)
+   ```bash
+   git add .
+   git commit -m "Ready for deployment"
+   git push origin main
+   ```
 
-The built files will be in the `dist` directory.
+2. **Connect to Vercel**
+   - Go to [vercel.com](https://vercel.com)
+   - Import your GitHub repository
+   - Vercel will auto-detect Vite configuration
 
-## Features Documentation
+3. **Set Environment Variables in Vercel**
+   - Go to Settings → Environment Variables
+   - Add:
+     ```
+     VITE_SUPABASE_URL=https://your-project.supabase.co
+     VITE_SUPABASE_ANON_KEY=your-anon-public-key
+     ```
 
-- [Email Setup Guide](./EMAIL_SETUP.md)
-- [Deployment Checklist](./DEPLOYMENT_CHECKLIST.md)
-- [Database Troubleshooting](./TROUBLESHOOTING_DATABASE.md)
+4. **Deploy**
+   - Click "Deploy"
+   - Your app will be live at `https://your-project.vercel.app`
+
+## Troubleshooting
+
+### Email Reminders Not Working
+- Verify `RESEND_API_KEY` is set in Supabase Secrets
+- Check Edge Function logs: Supabase Dashboard → Functions → send-task-reminders → Logs
+- Ensure `notify_email` is enabled in user profiles
+- Tasks must be due within 5 days to trigger reminders
+
+### CORS Errors
+- Make sure Edge Function is deployed: `supabase functions deploy send-task-reminders`
+- Verify environment variables are correct in `.env`
 
 ## License
 
