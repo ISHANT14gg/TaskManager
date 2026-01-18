@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { supabase } from "./integrations/supabase/client";
 
 import Auth from "./pages/Auth";
@@ -10,13 +11,11 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session (important for reset password)
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
     });
 
-    // Listen to auth state changes
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session);
@@ -28,27 +27,22 @@ export default function App() {
     };
   }, []);
 
-  // 🔄 Loading screen
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading...
-      </div>
-    );
-  }
+  if (loading) return <p>Loading...</p>;
 
-  // 🔑 HANDLE RESET PASSWORD ROUTE (NO REACT ROUTER)
-  const path = window.location.pathname;
+  return (
+    <Routes>
+      {/* Public routes */}
+      <Route path="/auth" element={<Auth />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
-  if (path === "/reset-password") {
-    return <ResetPassword />;
-  }
+      {/* Protected route */}
+      <Route
+        path="/"
+        element={session ? <Index /> : <Navigate to="/auth" replace />}
+      />
 
-  // 🔐 Not logged in
-  if (!session) {
-    return <Auth />;
-  }
-
-  // ✅ Logged in
-  return <Index />;
+      {/* Catch-all */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 }
