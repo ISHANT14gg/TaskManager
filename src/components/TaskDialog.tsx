@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ComplianceTask, TaskCategory, RecurrenceType, CATEGORIES, RECURRENCE_OPTIONS } from "@/types/task";
+import { ComplianceTask, RecurrenceType, CATEGORIES, RECURRENCE_OPTIONS } from "@/types/task";
 import {
   Dialog,
   DialogContent,
@@ -11,18 +11,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import CreatableSelect from "react-select/creatable";
+
+/* ===============================
+   Category options (existing)
+================================ */
+const categoryOptions = CATEGORIES.map((cat) => ({
+  value: cat.label,
+  label: cat.label,
+}));
 
 interface TaskDialogProps {
   open: boolean;
@@ -40,13 +42,16 @@ export function TaskDialog({
   onUpdate,
 }: TaskDialogProps) {
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<TaskCategory>("gst");
+  const [category, setCategory] = useState<string>("🧾 GST");
   const [deadline, setDeadline] = useState<Date>(new Date());
   const [recurrence, setRecurrence] = useState<RecurrenceType>("monthly");
   const [description, setDescription] = useState("");
 
   const isEditing = !!task;
 
+  /* ===============================
+     Populate form on edit
+  ================================ */
   useEffect(() => {
     if (task) {
       setName(task.name);
@@ -56,21 +61,24 @@ export function TaskDialog({
       setDescription(task.description || "");
     } else {
       setName("");
-      setCategory("gst");
+      setCategory("🧾 GST");
       setDeadline(new Date());
       setRecurrence("monthly");
       setDescription("");
     }
   }, [task, open]);
 
+  /* ===============================
+     Submit handler
+  ================================ */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!name.trim()) return;
 
     const taskData = {
       name: name.trim(),
-      category,
+      category, // ✅ custom + emoji safe
       deadline,
       recurrence,
       description: description.trim() || undefined,
@@ -81,7 +89,7 @@ export function TaskDialog({
     } else {
       onSave(taskData);
     }
-    
+
     onOpenChange(false);
   };
 
@@ -93,8 +101,11 @@ export function TaskDialog({
             {isEditing ? "Edit Task" : "Add New Compliance Task"}
           </DialogTitle>
         </DialogHeader>
+
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
+
+            {/* Task Name */}
             <div className="grid gap-2">
               <Label htmlFor="name">Task Name *</Label>
               <Input
@@ -106,22 +117,23 @@ export function TaskDialog({
               />
             </div>
 
+            {/* Category (Custom + Emoji) */}
             <div className="grid gap-2">
-              <Label htmlFor="category">Category</Label>
-              <Select value={category} onValueChange={(v) => setCategory(v as TaskCategory)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      {cat.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Category</Label>
+              <CreatableSelect
+                options={categoryOptions}
+                value={{ value: category, label: category }}
+                onChange={(option) => setCategory(option?.value ?? "")}
+                placeholder="Select or create category"
+                formatCreateLabel={(input) => `➕ Add "${input}"`}
+                isClearable
+              />
+              <p className="text-xs text-muted-foreground">
+                You can type your own category (emojis supported)
+              </p>
             </div>
 
+            {/* Deadline */}
             <div className="grid gap-2">
               <Label>Deadline</Label>
               <Popover>
@@ -143,39 +155,41 @@ export function TaskDialog({
                     selected={deadline}
                     onSelect={(date) => date && setDeadline(date)}
                     initialFocus
-                    className={cn("p-3 pointer-events-auto")}
+                    className="p-3 pointer-events-auto"
                   />
                 </PopoverContent>
               </Popover>
             </div>
 
+            {/* Recurrence */}
             <div className="grid gap-2">
-              <Label htmlFor="recurrence">Recurrence</Label>
-              <Select value={recurrence} onValueChange={(v) => setRecurrence(v as RecurrenceType)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select recurrence" />
-                </SelectTrigger>
-                <SelectContent>
-                  {RECURRENCE_OPTIONS.map((rec) => (
-                    <SelectItem key={rec.value} value={rec.value}>
-                      {rec.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Recurrence</Label>
+              <select
+                className="border rounded-md px-3 py-2"
+                value={recurrence}
+                onChange={(e) => setRecurrence(e.target.value as RecurrenceType)}
+              >
+                {RECURRENCE_OPTIONS.map((rec) => (
+                  <option key={rec.value} value={rec.value}>
+                    {rec.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
+            {/* Description */}
             <div className="grid gap-2">
-              <Label htmlFor="description">Description (optional)</Label>
+              <Label>Description (optional)</Label>
               <Textarea
-                id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Add any additional notes..."
                 rows={3}
               />
             </div>
+
           </div>
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel

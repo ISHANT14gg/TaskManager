@@ -1,8 +1,17 @@
-import { CATEGORIES, TaskCategory } from "@/types/task";
+import { CATEGORIES } from "@/types/task";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { Receipt, Landmark, Shield, Car, LayoutGrid } from "lucide-react";
+import {
+  Receipt,
+  Landmark,
+  Shield,
+  Car,
+  LayoutGrid,
+  Tag,
+} from "lucide-react";
 
+/* ===============================
+   Icon map for predefined categories
+================================ */
 const iconMap = {
   Receipt,
   Landmark,
@@ -13,13 +22,27 @@ const iconMap = {
 interface CategoryFilterProps {
   selected: string | null;
   onSelect: (category: string | null) => void;
+  categories?: string[]; // ✅ optional to prevent crash
 }
 
-export function CategoryFilter({ selected, onSelect }: CategoryFilterProps) {
+export function CategoryFilter({
+  selected,
+  onSelect,
+  categories = [], // ✅ DEFAULT VALUE (CRITICAL – prevents white screen)
+}: CategoryFilterProps) {
+  // Map predefined categories by id
+  const predefinedMap = new Map(
+    CATEGORIES.map((c) => [c.id, c])
+  );
+
+  // Emoji detector (safe for Vite + SWC)
+  const emojiRegex = /\p{Extended_Pictographic}/u;
+
   return (
     <div className="flex flex-wrap gap-2">
+      {/* ALL button */}
       <Button
-        variant={selected === null || selected === "all" ? "default" : "outline"}
+        variant={selected === null ? "default" : "outline"}
         size="sm"
         onClick={() => onSelect(null)}
         className="gap-2"
@@ -27,18 +50,34 @@ export function CategoryFilter({ selected, onSelect }: CategoryFilterProps) {
         <LayoutGrid className="h-4 w-4" />
         All
       </Button>
-      {CATEGORIES.map((category) => {
-        const Icon = iconMap[category.icon as keyof typeof iconMap];
+
+      {/* Dynamic categories */}
+      {categories.map((category) => {
+        if (!category) return null;
+
+        const predefined = predefinedMap.get(category);
+        const hasEmoji = emojiRegex.test(category);
+
+        const Icon = predefined
+          ? iconMap[predefined.icon as keyof typeof iconMap]
+          : Tag;
+
         return (
           <Button
-            key={category.id}
-            variant={selected === category.id ? "default" : "outline"}
+            key={category}
+            variant={selected === category ? "default" : "outline"}
             size="sm"
-            onClick={() => onSelect(category.id)}
+            onClick={() => onSelect(category)}
             className="gap-2"
           >
-            <Icon className="h-4 w-4" />
-            {category.label}
+            {hasEmoji ? (
+              <span>{category}</span>
+            ) : (
+              <>
+                <Icon className="h-4 w-4" />
+                {predefined?.label ?? category}
+              </>
+            )}
           </Button>
         );
       })}

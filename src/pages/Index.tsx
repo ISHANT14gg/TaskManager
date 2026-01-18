@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { ComplianceTask } from "@/types/task";
 import { useTasks } from "@/hooks/useTasks";
 import {
-  sortTasksByUrgency,
   filterTasksByCategory,
   getUrgencyLevel,
   getDaysUntilDeadline,
@@ -25,28 +24,48 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Plus, AlertTriangle, Bell, Clock, CheckCircle2 } from "lucide-react";
+import {
+  Plus,
+  AlertTriangle,
+  Bell,
+  Clock,
+  CheckCircle2,
+} from "lucide-react";
 
 const Index = () => {
-  const { tasks, isLoaded, addTask, updateTask, deleteTask, completeTask } = useTasks();
+  const {
+    tasks,
+    isLoaded,
+    addTask,
+    updateTask,
+    deleteTask,
+    completeTask,
+  } = useTasks();
+
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<ComplianceTask | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [editingTask, setEditingTask] =
+    useState<ComplianceTask | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] =
+    useState<string | null>(null);
 
-  // Compute stats
+  // ✅ ALL categories (default + custom)
+  const categories = useMemo(() => {
+    return Array.from(new Set(tasks.map((t) => t.category)));
+  }, [tasks]);
+
+  // Stats
   const stats = useMemo(() => {
     const pending = tasks.filter((t) => !t.completed);
     const completed = tasks.filter((t) => t.completed);
-    
-    const urgent = pending.filter((t) => {
-      const level = getUrgencyLevel(t);
-      return level === "urgent";
-    });
-    
+
+    const urgent = pending.filter(
+      (t) => getUrgencyLevel(t) === "urgent"
+    );
+
     const dueSoon = pending.filter((t) => {
-      const daysLeft = getDaysUntilDeadline(t.deadline);
-      return daysLeft > 0 && daysLeft <= 5;
+      const days = getDaysUntilDeadline(t.deadline);
+      return days > 0 && days <= 5;
     });
 
     return {
@@ -57,70 +76,69 @@ const Index = () => {
     };
   }, [tasks]);
 
-  // Filter and group tasks by priority
+  // Filtered task groups
   const taskGroups = useMemo(() => {
     const filtered = filterTasksByCategory(tasks, selectedCategory);
     const pending = filtered.filter((t) => !t.completed);
     const completed = filtered.filter((t) => t.completed);
 
-    // Group pending tasks by urgency level
-    const urgent = pending.filter((t) => getUrgencyLevel(t) === "urgent");
-    const warning = pending.filter((t) => getUrgencyLevel(t) === "warning");
-    const upcoming = pending.filter((t) => getUrgencyLevel(t) === "upcoming");
-    const normal = pending.filter((t) => getUrgencyLevel(t) === "normal");
-
-    return { urgent, warning, upcoming, normal, completed };
+    return {
+      urgent: pending.filter(
+        (t) => getUrgencyLevel(t) === "urgent"
+      ),
+      warning: pending.filter(
+        (t) => getUrgencyLevel(t) === "warning"
+      ),
+      upcoming: pending.filter(
+        (t) => getUrgencyLevel(t) === "upcoming"
+      ),
+      normal: pending.filter(
+        (t) => getUrgencyLevel(t) === "normal"
+      ),
+      completed,
+    };
   }, [tasks, selectedCategory]);
 
-  const handleAddTask = async (taskData: Omit<ComplianceTask, "id" | "completed">) => {
+  const handleAddTask = async (
+    taskData: Omit<ComplianceTask, "id" | "completed">
+  ) => {
     try {
       await addTask(taskData);
-      toast.success("Task added successfully");
-    } catch (error: any) {
-      console.error("Error adding task:", error);
-      toast.error(error.message || "Failed to add task. Please try again.");
+      toast.success("Task added");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to add task");
     }
   };
 
-  const handleEditTask = (task: ComplianceTask) => {
-    setEditingTask(task);
-    setDialogOpen(true);
-  };
-
-  const handleUpdateTask = async (id: string, updates: Partial<ComplianceTask>) => {
+  const handleUpdateTask = async (
+    id: string,
+    updates: Partial<ComplianceTask>
+  ) => {
     try {
       await updateTask(id, updates);
       setEditingTask(null);
-      toast.success("Task updated successfully");
-    } catch (error: any) {
-      console.error("Error updating task:", error);
-      toast.error(error.message || "Failed to update task. Please try again.");
+      toast.success("Task updated");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update task");
     }
   };
 
   const handleDeleteConfirm = async () => {
-    if (deleteConfirmId) {
-      try {
-        await deleteTask(deleteConfirmId);
-        setDeleteConfirmId(null);
-        toast.success("Task deleted successfully");
-      } catch (error: any) {
-        console.error("Error deleting task:", error);
-        toast.error(error.message || "Failed to delete task. Please try again.");
-        setDeleteConfirmId(null);
-      }
+    if (!deleteConfirmId) return;
+    try {
+      await deleteTask(deleteConfirmId);
+      toast.success("Task deleted");
+    } catch {
+      toast.error("Failed to delete task");
+    } finally {
+      setDeleteConfirmId(null);
     }
-  };
-
-  const handleOpenNewTask = () => {
-    setEditingTask(null);
-    setDialogOpen(true);
   };
 
   if (!isLoaded) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center">
+        Loading...
       </div>
     );
   }
@@ -130,14 +148,9 @@ const Index = () => {
       <Header />
 
       <main className="container mx-auto px-4 py-6 max-w-5xl">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatsCard
-            title="Pending Tasks"
-            value={stats.total}
-            icon={Clock}
-            variant="default"
-          />
+        {/* Stats */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <StatsCard title="Pending" value={stats.total} icon={Clock} />
           <StatsCard
             title="Urgent"
             value={stats.urgent}
@@ -145,7 +158,7 @@ const Index = () => {
             variant="urgent"
           />
           <StatsCard
-            title="Due in 5 Days"
+            title="Due Soon"
             value={stats.dueSoon}
             icon={Bell}
             variant="warning"
@@ -158,183 +171,44 @@ const Index = () => {
           />
         </div>
 
-        {/* Actions Bar */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+        {/* Actions */}
+        <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
           <CategoryFilter
             selected={selectedCategory}
             onSelect={setSelectedCategory}
+            categories={categories}
           />
-          <Button onClick={handleOpenNewTask} className="shrink-0">
+
+          <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Task
           </Button>
         </div>
 
-        {/* Task List - Prioritized by Urgency */}
+        {/* Tasks */}
         {tasks.length === 0 ? (
-          <EmptyState onAddTask={handleOpenNewTask} />
+          <EmptyState onAddTask={() => setDialogOpen(true)} />
         ) : (
           <div className="space-y-6">
-            {/* Urgent Tasks - Highest Priority */}
-            {taskGroups.urgent.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="p-2 rounded-lg bg-destructive/10">
-                    <AlertTriangle className="h-5 w-5 text-destructive" />
+            {Object.entries(taskGroups).map(
+              ([key, list]) =>
+                list.length > 0 && (
+                  <div key={key} className="space-y-3">
+                    {list.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        onComplete={completeTask}
+                        onEdit={(t) => {
+                          setEditingTask(t);
+                          setDialogOpen(true);
+                        }}
+                        onDelete={(id) => setDeleteConfirmId(id)}
+                      />
+                    ))}
                   </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-destructive">
-                      🔴 Urgent - Action Required
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      {taskGroups.urgent.length} task{taskGroups.urgent.length !== 1 ? 's' : ''} requiring immediate attention
-                    </p>
-                  </div>
-                </div>
-                <div className="grid gap-3">
-                  {taskGroups.urgent.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      onComplete={completeTask}
-                      onEdit={handleEditTask}
-                      onDelete={(id) => setDeleteConfirmId(id)}
-                    />
-                  ))}
-                </div>
-              </section>
+                )
             )}
-
-            {/* Warning Tasks */}
-            {taskGroups.warning.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="p-2 rounded-lg bg-orange-500/10">
-                    <AlertTriangle className="h-5 w-5 text-orange-500" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold text-orange-500">
-                      ⚠️ Warning - Due Soon
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      {taskGroups.warning.length} task{taskGroups.warning.length !== 1 ? 's' : ''} due within 3 days
-                    </p>
-                  </div>
-                </div>
-                <div className="grid gap-3">
-                  {taskGroups.warning.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      onComplete={completeTask}
-                      onEdit={handleEditTask}
-                      onDelete={(id) => setDeleteConfirmId(id)}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Upcoming Tasks */}
-            {taskGroups.upcoming.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="p-2 rounded-lg bg-yellow-500/10">
-                    <Bell className="h-5 w-5 text-yellow-500" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold text-yellow-500">
-                      📅 Upcoming - Plan Ahead
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      {taskGroups.upcoming.length} task{taskGroups.upcoming.length !== 1 ? 's' : ''} due within 5 days
-                    </p>
-                  </div>
-                </div>
-                <div className="grid gap-3">
-                  {taskGroups.upcoming.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      onComplete={completeTask}
-                      onEdit={handleEditTask}
-                      onDelete={(id) => setDeleteConfirmId(id)}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Normal Tasks */}
-            {taskGroups.normal.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="p-2 rounded-lg bg-primary/10">
-                    <Clock className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold text-foreground">
-                      📋 Normal Priority
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      {taskGroups.normal.length} task{taskGroups.normal.length !== 1 ? 's' : ''} with upcoming deadlines
-                    </p>
-                  </div>
-                </div>
-                <div className="grid gap-3">
-                  {taskGroups.normal.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      onComplete={completeTask}
-                      onEdit={handleEditTask}
-                      onDelete={(id) => setDeleteConfirmId(id)}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Completed Tasks - Collapsible */}
-            {taskGroups.completed.length > 0 && (
-              <section className="space-y-3 border-t pt-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="p-2 rounded-lg bg-success/10">
-                    <CheckCircle2 className="h-5 w-5 text-success" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold text-success">
-                      ✅ Completed Tasks
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      {taskGroups.completed.length} completed task{taskGroups.completed.length !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                </div>
-                <div className="grid gap-3">
-                  {taskGroups.completed.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      onComplete={completeTask}
-                      onEdit={handleEditTask}
-                      onDelete={(id) => setDeleteConfirmId(id)}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Empty State */}
-            {taskGroups.urgent.length === 0 &&
-              taskGroups.warning.length === 0 &&
-              taskGroups.upcoming.length === 0 &&
-              taskGroups.normal.length === 0 &&
-              taskGroups.completed.length === 0 && (
-                <div className="text-center py-12 text-muted-foreground">
-                  No tasks found in this category.
-                </div>
-              )}
           </div>
         )}
       </main>
@@ -342,33 +216,29 @@ const Index = () => {
       {/* Task Dialog */}
       <TaskDialog
         open={dialogOpen}
-        onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) setEditingTask(null);
-        }}
+        onOpenChange={setDialogOpen}
         task={editingTask}
         onSave={handleAddTask}
         onUpdate={handleUpdateTask}
       />
 
-      {/* Delete Confirmation */}
+      {/* Delete Confirm */}
       <AlertDialog
         open={!!deleteConfirmId}
-        onOpenChange={(open) => !open && setDeleteConfirmId(null)}
+        onOpenChange={() => setDeleteConfirmId(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. The task will be permanently removed
-              from your compliance tracker.
+              This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive"
             >
               Delete
             </AlertDialogAction>
@@ -380,3 +250,4 @@ const Index = () => {
 };
 
 export default Index;
+
