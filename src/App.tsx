@@ -4,6 +4,7 @@ import { supabase } from "./integrations/supabase/client";
 
 import Auth from "./pages/Auth";
 import Index from "./pages/Index";
+import Admin from "./pages/Admin";
 import ResetPassword from "./pages/ResetPassword";
 
 export default function App() {
@@ -43,6 +44,11 @@ export default function App() {
       <Route
         path="/"
         element={session ? <Index /> : <Navigate to="/auth" />}
+      />
+
+      <Route
+        path="/admin"
+        element={session ? <Admin /> : <Navigate to="/auth" />}
       />
 
       {/* Fallback */}
