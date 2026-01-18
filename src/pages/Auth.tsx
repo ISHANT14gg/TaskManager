@@ -1,25 +1,12 @@
 import { useState } from "react";
 import { supabase } from "../integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 
 export default function Auth() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const signUp = async () => {
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-    setLoading(false);
-
-    if (error) {
-      alert(error.message);
-    } else {
-      alert("Signup successful. You can login now.");
-    }
-  };
 
   const signIn = async () => {
     setLoading(true);
@@ -27,85 +14,68 @@ export default function Auth() {
       email,
       password,
     });
-    setLoading(false);
-
-    if (error) {
-      alert(error.message);
-    }
-  };
-
-  // 🔐 RESET PASSWORD EMAIL
-  const resetPassword = async () => {
-    if (!email) {
-      alert("Please enter your email first");
-      return;
-    }
-
-    setLoading(true);
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo:
-        "https://task-manager-3ah3-git-master-ishant14ggs-projects.vercel.app/reset-password",
-    });
 
     setLoading(false);
 
     if (error) {
       alert(error.message);
     } else {
-      alert("Password reset email sent. Check your inbox.");
+      navigate("/"); // ✅ THIS WAS MISSING
     }
   };
 
+  const signUp = async () => {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) alert(error.message);
+    else alert("Signup successful. Please login.");
+  };
+
+  const forgotPassword = async () => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo:
+        "https://task-manager-3ah3-git-master-ishant14ggs-projects.vercel.app/reset-password",
+    });
+
+    if (error) alert(error.message);
+    else alert("Password reset email sent");
+  };
+
   return (
-    <div style={{ padding: 40, maxWidth: 400 }}>
-      <h2>Login / Signup</h2>
+    <div style={{ padding: 40, maxWidth: 400, margin: "auto" }}>
+      <h2>Login</h2>
 
       <input
         placeholder="Email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        style={{ width: "100%", padding: 8 }}
+        style={{ width: "100%", marginBottom: 10 }}
       />
-      <br /><br />
 
       <input
         type="password"
         placeholder="Password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        style={{ width: "100%", padding: 8 }}
+        style={{ width: "100%", marginBottom: 10 }}
       />
-      <br /><br />
 
       <button onClick={signIn} disabled={loading}>
-        Login
+        {loading ? "Logging in..." : "Login"}
       </button>
 
-      <button
-        onClick={signUp}
-        disabled={loading}
-        style={{ marginLeft: 10 }}
-      >
+      <button onClick={signUp} style={{ marginLeft: 10 }}>
         Signup
       </button>
 
-      <br /><br />
-
-      {/* 🔑 Forgot password */}
-      <button
-        onClick={resetPassword}
-        disabled={loading}
-        style={{
-          background: "none",
-          color: "blue",
-          border: "none",
-          cursor: "pointer",
-          padding: 0,
-        }}
-      >
-        Forgot password?
-      </button>
+      <div style={{ marginTop: 10 }}>
+        <button onClick={forgotPassword} style={{ fontSize: 12 }}>
+          Forgot password?
+        </button>
+      </div>
     </div>
   );
 }

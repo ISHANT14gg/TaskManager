@@ -27,22 +27,26 @@ export default function App() {
     };
   }, []);
 
-  if (loading) return <p>Loading...</p>;
+  if (loading) return <div className="p-8">Loading...</div>;
 
   return (
     <Routes>
-      {/* Public routes */}
-      <Route path="/auth" element={<Auth />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
-
-      {/* Protected route */}
+      {/* Public */}
       <Route
-        path="/"
-        element={session ? <Index /> : <Navigate to="/auth" replace />}
+        path="/auth"
+        element={session ? <Navigate to="/" /> : <Auth />}
       />
 
-      {/* Catch-all */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+
+      {/* Protected */}
+      <Route
+        path="/"
+        element={session ? <Index /> : <Navigate to="/auth" />}
+      />
+
+      {/* Fallback */}
+      <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
 }
