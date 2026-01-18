@@ -6,6 +6,7 @@ import Auth from "./pages/Auth";
 import Index from "./pages/Index";
 import Admin from "./pages/Admin";
 import ResetPassword from "./pages/ResetPassword";
+import ProtectedAdminRoute from "./routes/ProtectedAdminRoute";
 
 export default function App() {
   const [session, setSession] = useState<any>(null);
@@ -40,15 +41,20 @@ export default function App() {
 
       <Route path="/reset-password" element={<ResetPassword />} />
 
-      {/* Protected */}
+      {/* User dashboard */}
       <Route
         path="/"
         element={session ? <Index /> : <Navigate to="/auth" />}
       />
 
+      {/* 🔐 Admin protected route */}
       <Route
         path="/admin"
-        element={session ? <Admin /> : <Navigate to="/auth" />}
+        element={
+          <ProtectedAdminRoute>
+            <Admin />
+          </ProtectedAdminRoute>
+        }
       />
 
       {/* Fallback */}
