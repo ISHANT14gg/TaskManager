@@ -1,79 +1,54 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useAuth } from "./hooks/useAuth";
-import { Toaster } from "@/components/ui/sonner";
+import { useEffect, useState } from "react";
+import { supabase } from "./integrations/supabase/client";
+
 import Auth from "./pages/Auth";
 import Index from "./pages/Index";
-import Admin from "./pages/Admin";
-import NotFound from "./pages/NotFound";
+import ResetPassword from "./pages/ResetPassword";
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+export default function App() {
+  const [session, setSession] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    // Get initial session (important for reset password)
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
+    });
+
+    // Listen to auth state changes
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+      }
+    );
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  // 🔄 Loading screen
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center">
+        Loading...
       </div>
     );
   }
 
-  if (!user) {
-    return <Navigate to="/auth" replace />;
+  // 🔑 HANDLE RESET PASSWORD ROUTE (NO REACT ROUTER)
+  const path = window.location.pathname;
+
+  if (path === "/reset-password") {
+    return <ResetPassword />;
   }
 
-  return <>{children}</>;
+  // 🔐 Not logged in
+  if (!session) {
+    return <Auth />;
+  }
+
+  // ✅ Logged in
+  return <Index />;
 }
-
-function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { user, profile, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to="/auth" replace />;
-  }
-
-  if (profile?.role !== "admin") {
-    return <Navigate to="/" replace />;
-  }
-
-  return <>{children}</>;
-}
-
-function App() {
-  return (
-    <>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/auth" element={<Auth />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              <AdminRoute>
-                <Admin />
-              </AdminRoute>
-            }
-          />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-      <Toaster />
-    </>
-  );
-}
-
-export default App;
