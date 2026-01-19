@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { Toaster } from "sonner";
 
 import Auth from "./pages/Auth";
 import Index from "./pages/Index";
@@ -15,33 +16,36 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      {/* Public */}
-      <Route
-        path="/auth"
-        element={!user ? <Auth /> : <Navigate to="/" />}
-      />
+    <>
+      <Toaster position="top-right" richColors closeButton />
+      <Routes>
+        {/* Public */}
+        <Route
+          path="/auth"
+          element={!user ? <Auth /> : <Navigate to="/" />}
+        />
 
-      <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
-      {/* User Dashboard */}
-      <Route
-        path="/"
-        element={user ? <Index /> : <Navigate to="/auth" />}
-      />
+        {/* User Dashboard */}
+        <Route
+          path="/"
+          element={user ? <Index /> : <Navigate to="/auth" />}
+        />
 
-      {/* 🔐 Admin Protected */}
-      <Route
-        path="/admin"
-        element={
-          <ProtectedAdminRoute>
-            <Admin />
-          </ProtectedAdminRoute>
-        }
-      />
+        {/* 🔐 Admin Protected */}
+        <Route
+          path="/admin"
+          element={
+            <ProtectedAdminRoute>
+              <Admin />
+            </ProtectedAdminRoute>
+          }
+        />
 
-      {/* Fallback */}
-      <Route path="*" element={<Navigate to="/" />} />
-    </Routes>
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </>
   );
 }
