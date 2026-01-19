@@ -56,8 +56,16 @@ export function useAuth() {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-  };
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } catch (err) {
+    console.warn("Supabase signOut failed, clearing storage");
+  } finally {
+    // 🔥 FORCE CLEAR SESSION
+    localStorage.clear();
+    sessionStorage.clear();
+  }
+};
 
   const isAdmin = profile?.role === "admin";
 

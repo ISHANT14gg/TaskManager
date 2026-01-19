@@ -1,12 +1,15 @@
 export type TaskCategory = "gst" | "income-tax" | "insurance" | "transport";
 export type RecurrenceType = "monthly" | "quarterly" | "yearly" | "one-time";
 export type UrgencyLevel = "urgent" | "warning" | "upcoming" | "normal" | "completed";
+export type NewComplianceTask = Omit<ComplianceTask, "id" | "completed">;
 
 export interface ComplianceTask {
   id: string;
   name: string;
   category: TaskCategory;
   deadline: Date;
+  client_name?: string;
+  client_phone?: string;
   recurrence: RecurrenceType;
   completed: boolean;
   completedAt?: Date;

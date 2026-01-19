@@ -3,31 +3,32 @@ import { supabase } from "@/integrations/supabase/client";
 export async function triggerEmailReminders(): Promise<{
   success: boolean;
   message: string;
-  emailsSent?: number;
+  sent?: number;
 }> {
   try {
+    // 🔐 This automatically attaches the logged-in user's access token
     const { data, error } = await supabase.functions.invoke(
-      "send-task-reminders"
+      "send-task-reminders",
+      {
+        body: {},
+      }
     );
 
     if (error) {
-      console.error("Edge function error:", error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      console.error("Edge Function error:", error);
+      throw error;
     }
 
     return {
       success: true,
-      message: data?.message || "Email reminders sent successfully",
-      emailsSent: data?.sent || data?.emailsSent || 0,
+      message: "Email reminders sent successfully",
+      sent: data?.sent ?? 0,
     };
-  } catch (error: any) {
-    console.error("triggerEmailReminders failed:", error);
+  } catch (err: any) {
+    console.error("Email reminder error:", err);
     return {
       success: false,
-      message: error.message || "Failed to send email reminders",
+      message: err.message || "Failed to send reminders",
     };
   }
 }

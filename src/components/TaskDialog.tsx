@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ComplianceTask, RecurrenceType, CATEGORIES, RECURRENCE_OPTIONS } from "@/types/task";
+import { ComplianceTask, RecurrenceType, RECURRENCE_OPTIONS } from "@/types/task";
 import {
   Dialog,
   DialogContent,
@@ -17,14 +17,15 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import CreatableSelect from "react-select/creatable";
+import { supabase } from "@/integrations/supabase/client";
 
 /* ===============================
-   Category options (existing)
+   Types
 ================================ */
-const categoryOptions = CATEGORIES.map((cat) => ({
-  value: cat.label,
-  label: cat.label,
-}));
+interface CategoryOption {
+  value: string;
+  label: string;
+}
 
 interface TaskDialogProps {
   open: boolean;
@@ -42,12 +43,38 @@ export function TaskDialog({
   onUpdate,
 }: TaskDialogProps) {
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<string>("🧾 GST");
+  const [category, setCategory] = useState<string>("GST");
   const [deadline, setDeadline] = useState<Date>(new Date());
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
   const [recurrence, setRecurrence] = useState<RecurrenceType>("monthly");
   const [description, setDescription] = useState("");
 
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const isEditing = !!task;
+
+  /* ===============================
+     Fetch categories from DB
+  ================================ */
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    const { data } = await supabase
+      .from("categories")
+      .select("name")
+      .order("name");
+
+    if (data) {
+      setCategories(
+        data.map((c) => ({
+          value: c.name,
+          label: c.name,
+        }))
+      );
+    }
+  };
 
   /* ===============================
      Populate form on edit
@@ -57,29 +84,56 @@ export function TaskDialog({
       setName(task.name);
       setCategory(task.category);
       setDeadline(new Date(task.deadline));
+      setClientName(task.client_name || "");
+      setClientPhone(task.client_phone || "");
       setRecurrence(task.recurrence);
       setDescription(task.description || "");
     } else {
       setName("");
-      setCategory("🧾 GST");
+      setCategory("GST");
       setDeadline(new Date());
+      setClientName("");
+      setClientPhone("");
       setRecurrence("monthly");
       setDescription("");
     }
   }, [task, open]);
 
   /* ===============================
+     Ensure category exists (FIXED)
+  ================================ */
+  const ensureCategoryExists = async (value: string) => {
+    if (!value?.trim()) return;
+
+    const { error } = await supabase
+      .from("categories")
+      .upsert(
+        { name: value.trim() },
+        { onConflict: "name" }
+      );
+
+    if (error) {
+      console.error("Category save failed:", error);
+    }
+
+    fetchCategories();
+  };
+
+  /* ===============================
      Submit handler
   ================================ */
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!name.trim()) return;
+
+    await ensureCategoryExists(category);
 
     const taskData = {
       name: name.trim(),
-      category, // ✅ custom + emoji safe
+      category,
       deadline,
+      client_name: clientName.trim() || undefined,
+      client_phone: clientPhone.trim() || undefined,
       recurrence,
       description: description.trim() || undefined,
     };
@@ -104,94 +158,93 @@ export function TaskDialog({
 
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
-
-            {/* Task Name */}
             <div className="grid gap-2">
-              <Label htmlFor="name">Task Name *</Label>
+              <Label>Task Name *</Label>
               <Input
-                id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., GSTR-3B Filing"
                 required
               />
             </div>
 
-            {/* Category (Custom + Emoji) */}
             <div className="grid gap-2">
               <Label>Category</Label>
               <CreatableSelect
-                options={categoryOptions}
+                options={categories}
                 value={{ value: category, label: category }}
-                onChange={(option) => setCategory(option?.value ?? "")}
+                onChange={(opt) => setCategory(opt?.value ?? "")}
                 placeholder="Select or create category"
                 formatCreateLabel={(input) => `➕ Add "${input}"`}
-                isClearable
               />
-              <p className="text-xs text-muted-foreground">
-                You can type your own category (emojis supported)
-              </p>
             </div>
 
-            {/* Deadline */}
+            <div className="grid gap-2">
+              <Label>Client Name</Label>
+              <Input
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Client Phone</Label>
+              <Input
+                value={clientPhone}
+                onChange={(e) => setClientPhone(e.target.value)}
+              />
+            </div>
+
             <div className="grid gap-2">
               <Label>Deadline</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !deadline && "text-muted-foreground"
-                    )}
+                    className={cn("w-full justify-start")}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {deadline ? format(deadline, "PPP") : <span>Pick a date</span>}
+                    {format(deadline, "PPP")}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className="w-auto p-0">
                   <Calendar
                     mode="single"
                     selected={deadline}
-                    onSelect={(date) => date && setDeadline(date)}
-                    initialFocus
-                    className="p-3 pointer-events-auto"
+                    onSelect={(d) => d && setDeadline(d)}
                   />
                 </PopoverContent>
               </Popover>
             </div>
 
-            {/* Recurrence */}
             <div className="grid gap-2">
               <Label>Recurrence</Label>
               <select
                 className="border rounded-md px-3 py-2"
                 value={recurrence}
-                onChange={(e) => setRecurrence(e.target.value as RecurrenceType)}
+                onChange={(e) =>
+                  setRecurrence(e.target.value as RecurrenceType)
+                }
               >
-                {RECURRENCE_OPTIONS.map((rec) => (
-                  <option key={rec.value} value={rec.value}>
-                    {rec.label}
+                {RECURRENCE_OPTIONS.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Description */}
             <div className="grid gap-2">
-              <Label>Description (optional)</Label>
+              <Label>Description</Label>
               <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Add any additional notes..."
                 rows={3}
               />
             </div>
-
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit">

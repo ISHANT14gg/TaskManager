@@ -1,4 +1,4 @@
-import { ComplianceTask } from "@/types/task";
+import { ComplianceTask, RECURRENCE_OPTIONS } from "@/types/task";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -10,8 +10,14 @@ import {
   formatDeadline,
   getDaysUntilDeadline,
 } from "@/lib/taskUtils";
-import { RECURRENCE_OPTIONS } from "@/types/task";
-import { Calendar, Repeat, Pencil, Trash2 } from "lucide-react";
+import {
+  Calendar,
+  Repeat,
+  Pencil,
+  Trash2,
+  User,
+  Phone,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TaskCardProps {
@@ -21,10 +27,14 @@ interface TaskCardProps {
   onDelete: (id: string) => void;
 }
 
-export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) {
+export function TaskCard({
+  task,
+  onComplete,
+  onEdit,
+  onDelete,
+}: TaskCardProps) {
   const urgencyLevel = getUrgencyLevel(task);
   const urgencyMessage = getUrgencyMessage(task);
-  const daysLeft = getDaysUntilDeadline(task.deadline);
   const recurrenceLabel = RECURRENCE_OPTIONS.find(
     (r) => r.value === task.recurrence
   )?.label;
@@ -52,7 +62,9 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
             onCheckedChange={() => onComplete(task.id)}
             className="mt-1"
           />
+
           <div className="flex-1 min-w-0">
+            {/* HEADER */}
             <div className="flex items-start justify-between gap-2 mb-2">
               <h3
                 className={cn(
@@ -62,11 +74,12 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
               >
                 {task.name}
               </h3>
+
               <div className="flex items-center gap-1 shrink-0">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  className="h-8 w-8"
                   onClick={() => onEdit(task)}
                 >
                   <Pencil className="h-4 w-4" />
@@ -74,7 +87,7 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  className="h-8 w-8 text-destructive"
                   onClick={() => onDelete(task.id)}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -82,17 +95,38 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
               </div>
             </div>
 
+            {/* DESCRIPTION */}
             {task.description && (
-              <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+              <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
                 {task.description}
               </p>
             )}
 
+            {/* CLIENT INFO */}
+            {(task.client_name || task.client_phone) && (
+              <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mb-3">
+                {task.client_name && (
+                  <div className="flex items-center gap-1">
+                    <User className="h-4 w-4" />
+                    <span>{task.client_name}</span>
+                  </div>
+                )}
+                {task.client_phone && (
+                  <div className="flex items-center gap-1">
+                    <Phone className="h-4 w-4" />
+                    <span>{task.client_phone}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* BADGES */}
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <CategoryBadge category={task.category} />
               <UrgencyBadge level={urgencyLevel} message={urgencyMessage} />
             </div>
 
+            {/* META */}
             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
