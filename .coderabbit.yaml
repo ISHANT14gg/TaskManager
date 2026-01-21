@@ -1,0 +1,35 @@
+# CodeRabbit configuration for Compliance Tracker
+
+language: typescript
+
+reviews:
+  auto_review: true
+
+  focus:
+    - bugs
+    - security
+    - performance
+    - best-practices
+    - documentation
+
+  exclude:
+    - node_modules/**
+    - dist/**
+    - build/**
+    - .env*
+    - "*.test.ts"
+    - "*.spec.ts"
+
+  include:
+    - src/**/*.ts
+    - src/**/*.tsx
+    - supabase/**/*.ts
+
+comments:
+  enabled: true
+  style: conversational
+  auto_fix_suggestions: true
+
+notifications:
+  critical_issues: true
+  review_complete: true
