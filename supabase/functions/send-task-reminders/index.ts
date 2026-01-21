@@ -77,9 +77,13 @@ serve(async (req) => {
     const fiveDaysLater = new Date(today);
     fiveDaysLater.setDate(today.getDate() + 5);
 
-    console.log(`Searching for tasks between ${today.toISOString()} and ${fiveDaysLater.toISOString()}`);
+    // Get optional target user ID
+    const { targetUserId } = await req.json().catch(() => ({ targetUserId: null }));
 
-    const { data: tasks, error: fetchError } = await supabaseAdmin
+    console.log(`Searching for tasks between ${today.toISOString()} and ${fiveDaysLater.toISOString()}`);
+    if (targetUserId) console.log(`Targeting specific user: ${targetUserId}`);
+
+    let query = supabaseAdmin
       .from("tasks")
       .select(`
         name,
@@ -89,6 +93,12 @@ serve(async (req) => {
       .eq("completed", false)
       .gte("deadline", today.toISOString())
       .lte("deadline", fiveDaysLater.toISOString());
+
+    if (targetUserId) {
+      query = query.eq("user_id", targetUserId);
+    }
+
+    const { data: tasks, error: fetchError } = await query;
 
     if (fetchError) {
       console.error("Error fetching tasks:", fetchError);

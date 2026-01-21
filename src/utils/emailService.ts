@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export async function triggerEmailReminders(): Promise<{
+export async function triggerEmailReminders(targetUserId?: string): Promise<{
   success: boolean;
   message: string;
   sent?: number;
@@ -10,7 +10,7 @@ export async function triggerEmailReminders(): Promise<{
     const { data, error } = await supabase.functions.invoke(
       "send-task-reminders",
       {
-        body: {},
+        body: { targetUserId },
       }
     );
 
