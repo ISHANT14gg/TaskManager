@@ -32,9 +32,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Users, Shield, Mail, Phone, Calendar, Send, ArrowRightLeft, ClipboardList } from "lucide-react";
+import { Users, Shield, Mail, Phone, Calendar, Send, ArrowRightLeft, ClipboardList, FileSpreadsheet } from "lucide-react";
 import { triggerEmailReminders } from "@/utils/emailService";
 import { TaskTransferDialog } from "@/components/TaskTransferDialog";
+import { fetchUserTasks, downloadTasksCSV } from "@/utils/taskTransferService";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -140,12 +141,27 @@ export default function Admin() {
     }
   };
 
+  const handleExportTasks = async (user: Profile) => {
+    try {
+      const tasks = await fetchUserTasks(user.id);
+      if (tasks.length === 0) {
+        toast.info(`No tasks found for ${user.full_name || user.email}`);
+        return;
+      }
+      downloadTasksCSV(tasks, user.full_name || user.email || "user");
+      toast.success("Tasks exported successfully");
+    } catch (error) {
+      console.error("Error exporting tasks:", error);
+      toast.error("Failed to export tasks");
+    }
+  };
+
   const handleSendReminders = async () => {
     setSendingEmails(true);
     try {
       const result = await triggerEmailReminders();
       if (result.success) {
-        toast.success(result.message || "Email reminders sent successfully");
+        toast.success(`Sent ${result.sent} email reminders successfully`);
       } else {
         toast.error(result.message || "Failed to send email reminders");
       }
@@ -344,6 +360,14 @@ export default function Admin() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleExportTasks(user)}
+                              title="Export User Tasks"
+                            >
+                              <FileSpreadsheet className="h-4 w-4" />
+                            </Button>
                             <Button
                               variant="outline"
                               size="sm"

@@ -40,8 +40,12 @@ export function Header() {
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary text-primary-foreground">
-              <ClipboardCheck className="h-6 w-6" />
+            <div className="h-16 w-16 flex items-center justify-center">
+              <img
+                src="/sharma-logo.png"
+                alt="Logo"
+                className="h-full w-full object-contain"
+              />
             </div>
             <div>
               <h1 className="text-xl font-bold text-foreground">

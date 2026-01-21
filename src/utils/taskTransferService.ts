@@ -166,3 +166,55 @@ export async function transferAllUserTasks(
         };
     }
 }
+
+/**
+ * Export a user's tasks to a CSV file
+ * @param tasks - Array of tasks to export
+ * @param userName - Name of the user (for filename)
+ */
+export function downloadTasksCSV(tasks: SystemTask[], userName: string) {
+    if (!tasks || tasks.length === 0) {
+        return;
+    }
+
+    // Define columns
+    const headers = [
+        "Task ID",
+        "Name",
+        "Category",
+        "Deadline",
+        "Status"
+    ];
+
+    // Format data rows
+    const rows = tasks.map(task => [
+        task.id,
+        `"${task.name.replace(/"/g, '""')}"`, // Escape quotes
+        task.category,
+        new Date(task.deadline).toLocaleDateString(),
+        task.completed ? "Completed" : "Pending"
+    ]);
+
+    // Combine headers and rows
+    const csvContent = [
+        headers.join(","),
+        ...rows.map(row => row.join(","))
+    ].join("\n");
+
+    // Create a Blob
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+
+    // Create download link
+    const link = document.createElement("a");
+    if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        const dateStr = new Date().toISOString().split('T')[0];
+        const safeUserName = userName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        link.setAttribute("href", url);
+        link.setAttribute("download", `tasks_${safeUserName}_${dateStr}.csv`);
+        link.style.visibility = "hidden";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+}
