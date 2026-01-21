@@ -1,5 +1,34 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+
+// --- SECURITY: Rate Limiting ---
+// In-memory store for rate limiting (per function instance)
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 5;    // Max 5 triggerings per minute per IP
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const userData = rateLimitStore.get(ip);
+
+  if (!userData || now > userData.resetTime) {
+    rateLimitStore.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+    return false;
+  }
+
+  if (userData.count >= MAX_REQUESTS_PER_WINDOW) {
+    return true;
+  }
+
+  userData.count++;
+  return false;
+}
+
+// --- SECURITY: Input Validation ---
+const RequestSchema = z.object({
+  targetUserId: z.string().uuid().optional().nullable(),
+});
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +40,16 @@ const corsHeaders = {
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  // 🛡️ SECURITY: Rate Limiting check
+  const clientIp = req.headers.get("x-real-ip") || req.headers.get("x-forwarded-for") || "unknown";
+  if (isRateLimited(clientIp)) {
+    console.warn(`Rate limit exceeded for IP: ${clientIp}`);
+    return new Response(
+      JSON.stringify({ error: "Too many requests. Please try again in a minute." }),
+      { status: 429, headers: { ...corsHeaders, "Retry-After": "60" } }
+    );
   }
 
   try {
@@ -77,8 +116,20 @@ serve(async (req) => {
     const fiveDaysLater = new Date(today);
     fiveDaysLater.setDate(today.getDate() + 5);
 
-    // Get optional target user ID
-    const { targetUserId } = await req.json().catch(() => ({ targetUserId: null }));
+    // 🛡️ SECURITY: Strict Input Validation
+    let payload;
+    try {
+      const rawBody = await req.json();
+      payload = RequestSchema.parse(rawBody);
+    } catch (err: any) {
+      console.warn("Input validation failed:", err.message);
+      return new Response(
+        JSON.stringify({ error: "Invalid request payload", details: err.errors }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    const { targetUserId } = payload;
 
     console.log(`Searching for tasks between ${today.toISOString()} and ${fiveDaysLater.toISOString()}`);
     if (targetUserId) console.log(`Targeting specific user: ${targetUserId}`);

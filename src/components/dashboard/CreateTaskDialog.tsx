@@ -140,10 +140,11 @@ export function CreateTaskDialog({
                         <Label htmlFor="name">Task Name</Label>
                         <Input
                             id="name"
-                            placeholder="e.g. GST Filing for March"
+                            placeholder="e.g. GSTR-1 Filing"
                             value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value.substring(0, 100) })}
                             required
+                            maxLength={100}
                         />
                     </div>
 
@@ -220,7 +221,8 @@ export function CreateTaskDialog({
                             id="description"
                             placeholder="Add details..."
                             value={formData.description}
-                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                            onChange={(e) => setFormData({ ...formData, description: e.target.value.substring(0, 500) })}
+                            maxLength={500}
                         />
                     </div>
 

@@ -173,7 +173,8 @@ export default function Auth() {
                   required
                   autoComplete="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(e.target.value.trim().substring(0, 100))}
+                  maxLength={100}
                 />
               </div>
             </div>
