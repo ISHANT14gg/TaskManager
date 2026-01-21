@@ -1,4 +1,4 @@
-import { differenceInDays, addMonths, addYears, format, isAfter, isBefore, startOfDay } from "date-fns";
+import { differenceInDays, addMonths, addYears, format, isAfter, isBefore, startOfDay, addDays } from "date-fns";
 import { ComplianceTask, UrgencyLevel, RecurrenceType } from "@/types/task";
 
 export function getDaysUntilDeadline(deadline: Date): number {
@@ -9,9 +9,9 @@ export function getDaysUntilDeadline(deadline: Date): number {
 
 export function getUrgencyLevel(task: ComplianceTask): UrgencyLevel {
   if (task.completed) return "completed";
-  
+
   const daysLeft = getDaysUntilDeadline(task.deadline);
-  
+
   if (daysLeft < 0) return "urgent"; // Overdue
   if (daysLeft <= 1) return "urgent";
   if (daysLeft <= 3) return "warning";
@@ -21,9 +21,9 @@ export function getUrgencyLevel(task: ComplianceTask): UrgencyLevel {
 
 export function getUrgencyMessage(task: ComplianceTask): string {
   if (task.completed) return "Completed";
-  
+
   const daysLeft = getDaysUntilDeadline(task.deadline);
-  
+
   if (daysLeft < 0) return `⚠️ Overdue by ${Math.abs(daysLeft)} day(s)`;
   if (daysLeft === 0) return "⚠️ Urgent: Due today!";
   if (daysLeft === 1) return "⚠️ Urgent: Last day tomorrow";
@@ -38,18 +38,37 @@ export function shouldShowReminder(task: ComplianceTask): boolean {
   return daysLeft <= 5 && daysLeft >= 0;
 }
 
-export function getNextDeadline(currentDeadline: Date, recurrence: RecurrenceType): Date | null {
+export function getNextDeadline(
+  current: Date,
+  recurrence: "weekly" | "monthly" | "quarterly" | "yearly" | "one-time"
+): Date | null {
+  const next = new Date(current);
+
   switch (recurrence) {
+    case "weekly":
+      next.setDate(next.getDate() + 7);
+      return next;
+
     case "monthly":
-      return addMonths(currentDeadline, 1);
+      next.setMonth(next.getMonth() + 1);
+      return next;
+
     case "quarterly":
-      return addMonths(currentDeadline, 3);
+      next.setMonth(next.getMonth() + 3);
+      return next;
+
     case "yearly":
-      return addYears(currentDeadline, 1);
+      next.setFullYear(next.getFullYear() + 1);
+      return next;
+
     case "one-time":
+      return null;
+
+    default:
       return null;
   }
 }
+
 
 export function formatDeadline(date: Date): string {
   return format(new Date(date), "dd MMM yyyy");
@@ -60,7 +79,7 @@ export function sortTasksByUrgency(tasks: ComplianceTask[]): ComplianceTask[] {
     // Completed tasks go to the end
     if (a.completed && !b.completed) return 1;
     if (!a.completed && b.completed) return -1;
-    
+
     // Sort by deadline
     const dateA = new Date(a.deadline);
     const dateB = new Date(b.deadline);
@@ -79,7 +98,7 @@ export function generateId(): string {
 
 export function getDefaultTasks(): ComplianceTask[] {
   const today = new Date();
-  
+
   return [
     {
       id: generateId(),

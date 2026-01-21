@@ -32,8 +32,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Users, Shield, Mail, Phone, Calendar, Send } from "lucide-react";
+import { Users, Shield, Mail, Phone, Calendar, Send, ArrowRightLeft, ClipboardList } from "lucide-react";
 import { triggerEmailReminders } from "@/utils/emailService";
+import { TaskTransferDialog } from "@/components/TaskTransferDialog";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -52,10 +53,26 @@ export default function Admin() {
     role: "user" as "admin" | "user",
   });
   const [sendingEmails, setSendingEmails] = useState(false);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [totalTasks, setTotalTasks] = useState(0);
 
   useEffect(() => {
     fetchUsers();
+    fetchTotalTasks();
   }, []);
+
+  const fetchTotalTasks = async () => {
+    try {
+      const { count, error } = await supabase
+        .from("tasks")
+        .select("*", { count: "exact", head: true });
+
+      if (error) throw error;
+      setTotalTasks(count || 0);
+    } catch (error) {
+      console.error("Error fetching total tasks:", error);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -190,6 +207,38 @@ export default function Admin() {
               >
                 <Send className="h-4 w-4" />
                 {sendingEmails ? "Sending..." : "Send Reminders"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Task Transfer Section */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5" />
+              Task Transfer
+            </CardTitle>
+            <CardDescription>
+              Transfer tasks between users. You can transfer all tasks from one user or select specific tasks.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">
+                  As an administrator, you can reassign tasks from one user to another.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Total tasks in system: <strong>{totalTasks}</strong>
+                </p>
+              </div>
+              <Button
+                onClick={() => setTransferDialogOpen(true)}
+                className="gap-2"
+              >
+                <ArrowRightLeft className="h-4 w-4" />
+                Transfer Tasks
               </Button>
             </div>
           </CardContent>
@@ -420,6 +469,18 @@ export default function Admin() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Task Transfer Dialog */}
+      <TaskTransferDialog
+        open={transferDialogOpen}
+        onOpenChange={setTransferDialogOpen}
+        users={users}
+        currentAdminId={profile?.id || ""}
+        onTransferComplete={() => {
+          fetchTotalTasks();
+          toast.success("Task transfer completed!");
+        }}
+      />
     </div>
   );
 }

@@ -162,8 +162,8 @@ export function useTasks() {
               updates.completed === true
                 ? new Date()
                 : updates.completed === false
-                ? undefined
-                : task.completedAt,
+                  ? undefined
+                  : task.completedAt,
           };
 
           return updated;
