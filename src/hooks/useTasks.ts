@@ -64,6 +64,8 @@ export function useTasks() {
         recurrence: task.recurrence as ComplianceTask["recurrence"],
         completed: task.completed,
         completedAt: task.completed_at ? new Date(task.completed_at) : undefined,
+        client_name: task.client_name || undefined,
+        client_phone: task.client_phone || undefined,
         description: task.description || undefined,
       }));
 
@@ -113,6 +115,8 @@ export function useTasks() {
           category: dbCategory,
           deadline: task.deadline.toISOString(),
           recurrence: task.recurrence,
+          client_name: task.client_name || null,
+          client_phone: task.client_phone || null,
           description: task.description || null,
           completed: false,
         })
@@ -132,6 +136,8 @@ export function useTasks() {
         category: data.category.replace("_", "-") as ComplianceTask["category"],
         deadline: new Date(data.deadline),
         recurrence: data.recurrence as ComplianceTask["recurrence"],
+        client_name: data.client_name || undefined,
+        client_phone: data.client_phone || undefined,
         completed: data.completed,
         completedAt: data.completed_at ? new Date(data.completed_at) : undefined,
         description: data.description || undefined,
@@ -174,6 +180,12 @@ export function useTasks() {
       }
       if (updates.description !== undefined) {
         updateData.description = updates.description || null;
+      }
+      if (updates.client_name !== undefined) {
+        updateData.client_name = updates.client_name || null;
+      }
+      if (updates.client_phone !== undefined) {
+        updateData.client_phone = updates.client_phone || null;
       }
       if (updates.completed !== undefined) {
         updateData.completed = updates.completed;

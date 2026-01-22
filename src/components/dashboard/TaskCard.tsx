@@ -1,7 +1,7 @@
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, AlertCircle, Clock, CalendarDays } from "lucide-react";
+import { CheckCircle2, AlertCircle, Clock, CalendarDays, User, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 import { formatDistanceToNow, isPast, isToday } from "date-fns";
@@ -62,6 +62,23 @@ export function TaskCard({ task, onComplete }: TaskCardProps) {
                             {formatDistanceToNow(new Date(task.deadline), { addSuffix: true })}
                         </span>
                     </div>
+
+                    {(task.client_name || task.client_phone) && (
+                        <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-50 mt-1">
+                            {task.client_name && (
+                                <div className="flex items-center gap-2 text-slate-600">
+                                    <User className="w-3.5 h-3.5 text-slate-400" />
+                                    <span className="text-sm font-medium">{task.client_name}</span>
+                                </div>
+                            )}
+                            {task.client_phone && (
+                                <div className="flex items-center gap-2 text-slate-600">
+                                    <Smartphone className="w-3.5 h-3.5 text-slate-400" />
+                                    <span className="text-sm">{task.client_phone}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Bottom: Action (Subtle) */}

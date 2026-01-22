@@ -53,6 +53,8 @@ export function CreateTaskDialog({
         category: "General",
         description: "",
         recurrence: "none",
+        client_name: "",
+        client_phone: "",
         amount: "", // Note: Schema update pending for this field
     });
 
@@ -91,6 +93,8 @@ export function CreateTaskDialog({
                 category: formData.category,
                 deadline: date,
                 description: formData.description.trim() || undefined,
+                client_name: formData.client_name.trim() || undefined,
+                client_phone: formData.client_phone.trim() || undefined,
                 recurrence: formData.recurrence === "none" ? "one-time" : formData.recurrence,
             });
 
@@ -108,6 +112,8 @@ export function CreateTaskDialog({
                 name: taskData.name,
                 category: taskData.category,
                 description: taskData.description || null,
+                client_name: taskData.client_name || null,
+                client_phone: taskData.client_phone || null,
                 recurrence: taskData.recurrence,
                 deadline: taskData.deadline.toISOString(),
                 completed: false,
@@ -119,7 +125,7 @@ export function CreateTaskDialog({
             onTaskCreated();
             onOpenChange(false);
             // Reset form
-            setFormData({ name: "", category: "General", description: "", recurrence: "none", amount: "" });
+            setFormData({ name: "", category: "General", description: "", recurrence: "none", client_name: "", client_phone: "", amount: "" });
             setDate(new Date());
         } catch (error: any) {
             console.error("Error creating task:", error);
@@ -230,6 +236,29 @@ export function CreateTaskDialog({
                                     <SelectItem value="yearly">Yearly</SelectItem>
                                 </SelectContent>
                             </Select>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="client_name">Client Name</Label>
+                            <Input
+                                id="client_name"
+                                placeholder="e.g. Rahul Sharma"
+                                value={formData.client_name}
+                                onChange={(e) => setFormData({ ...formData, client_name: e.target.value.substring(0, 100) })}
+                                maxLength={100}
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="client_phone">Client Phone</Label>
+                            <Input
+                                id="client_phone"
+                                placeholder="10-digit mobile"
+                                value={formData.client_phone}
+                                onChange={(e) => setFormData({ ...formData, client_phone: e.target.value.substring(0, 15) })}
+                                maxLength={15}
+                            />
                         </div>
                     </div>
 

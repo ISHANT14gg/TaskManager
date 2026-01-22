@@ -120,6 +120,8 @@ export type Database = {
           organization_id: string
           transferred_from?: string | null
           transferred_at?: string | null
+          client_name: string | null
+          client_phone: string | null
         }
         Insert: {
           category: string
@@ -136,6 +138,8 @@ export type Database = {
           organization_id: string
           transferred_from?: string | null
           transferred_at?: string | null
+          client_name?: string | null
+          client_phone?: string | null
         }
         Update: {
           category?: string
@@ -152,6 +156,8 @@ export type Database = {
           organization_id?: string
           transferred_from?: string | null
           transferred_at?: string | null
+          client_name?: string | null
+          client_phone?: string | null
         }
         Relationships: [
           {
