@@ -36,7 +36,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, Shield, Mail, Phone, Calendar, Send, ArrowRightLeft,
   FileSpreadsheet, LayoutDashboard, ListTodo, Activity, AlertCircle,
-  Clock, Settings, Plus, CheckCircle2
+  Clock, Settings, Plus
 } from "lucide-react";
 import { triggerEmailReminders } from "@/utils/emailService";
 import { TaskTransferDialog } from "@/components/TaskTransferDialog";
@@ -56,7 +56,7 @@ type Task = Database["public"]["Tables"]["tasks"]["Row"];
 
 export default function Admin() {
   const { profile } = useAuth();
-  const [users, setUsers] = useState<(Profile & { tasks: Task[] })[]>([]);
+  const [users, setUsers] = useState<Profile[]>([]);
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
@@ -107,28 +107,6 @@ export default function Admin() {
     fetchRecentTasks();
     fetchCategories();
     fetchOrgSettings();
-
-    // 🚀 Real-time updates for task changes
-    const channel = supabase
-      .channel('admin-tasks-realtime')
-      .on(
-        'postgres_changes' as any,
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tasks'
-        },
-        () => {
-          fetchUsers();
-          fetchTotalTasks();
-          fetchRecentTasks();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, [profile?.id, profile?.organization_id]);
 
   const fetchTotalTasks = async () => {
@@ -168,11 +146,11 @@ export default function Admin() {
     try {
       const { data, error } = await supabase
         .from("profiles")
-        .select("*, tasks(*)")
+        .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setUsers(data as (Profile & { tasks: Task[] })[] || []);
+      setUsers(data || []);
     } catch (error) {
       console.error("Error fetching users:", error);
     } finally {
@@ -720,8 +698,7 @@ export default function Admin() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>User Profile</TableHead>
-                        <TableHead>Assigned Tasks</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead>Contact</TableHead>
                         <TableHead>Role</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -741,37 +718,9 @@ export default function Admin() {
                               </div>
                             </TableCell>
                             <TableCell>
-                              <div className="flex flex-col gap-1 max-w-[200px]">
-                                {user.tasks && user.tasks.length > 0 ? (
-                                  user.tasks.map((t) => (
-                                    <div key={t.id} className="text-sm truncate" title={t.name}>
-                                      • {t.name}
-                                    </div>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-muted-foreground italic">No tasks assigned</span>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col gap-1">
-                                {user.tasks && user.tasks.length > 0 ? (
-                                  user.tasks.map((t) => (
-                                    <div key={t.id} className="flex items-center gap-1">
-                                      {t.completed ? (
-                                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-[10px] h-5 px-1.5 flex items-center gap-0.5">
-                                          <CheckCircle2 className="h-2.5 w-2.5" /> Completed
-                                        </Badge>
-                                      ) : (
-                                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] h-5 px-1.5 flex items-center gap-0.5">
-                                          <Clock className="h-2.5 w-2.5" /> Pending
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">-</span>
-                                )}
+                              <div className="flex flex-col gap-1 text-sm">
+                                <span className="flex items-center gap-1"><Mail className="h-3 w-3" /> {user.email}</span>
+                                {user.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" /> {user.phone}</span>}
                               </div>
                             </TableCell>
                             <TableCell>
