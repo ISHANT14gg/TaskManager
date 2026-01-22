@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { taskSchema } from "@/lib/validations";
 
 interface CreateTaskDialogProps {
     open: boolean;
@@ -84,15 +85,32 @@ export function CreateTaskDialog({
 
         setLoading(true);
         try {
+            // 🛡️ SECURITY: SaaS-Standard Validation (Zod)
+            const validation = taskSchema.safeParse({
+                name: formData.name.trim(),
+                category: formData.category,
+                deadline: date,
+                description: formData.description.trim() || undefined,
+                recurrence: formData.recurrence === "none" ? "one-time" : formData.recurrence,
+            });
+
+            if (!validation.success) {
+                toast.error(validation.error.errors[0].message);
+                setLoading(false);
+                return;
+            }
+
+            const taskData = validation.data;
+
             const { error } = await supabase.from("tasks").insert({
                 user_id: profile.id,
-                name: formData.name,
-                category: formData.category,
-                description: formData.description,
-                recurrence: formData.recurrence,
-                deadline: date.toISOString(),
+                organization_id: profile.organization_id, // 🛡️ Multi-tenancy enforcement
+                name: taskData.name,
+                category: taskData.category,
+                description: taskData.description || null,
+                recurrence: taskData.recurrence,
+                deadline: taskData.deadline.toISOString(),
                 completed: false,
-                // amount: formData.amount ? parseFloat(formData.amount) : null, // Future
             });
 
             if (error) throw error;

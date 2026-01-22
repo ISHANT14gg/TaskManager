@@ -18,6 +18,8 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import CreatableSelect from "react-select/creatable";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { taskSchema } from "@/lib/validations";
 
 /* ===============================
    Types
@@ -128,7 +130,8 @@ export function TaskDialog({
 
     await ensureCategoryExists(category);
 
-    const taskData = {
+    // 🛡️ SECURITY: SaaS-Standard Validation (Zod)
+    const validation = taskSchema.safeParse({
       name: name.trim(),
       category,
       deadline,
@@ -136,7 +139,16 @@ export function TaskDialog({
       client_phone: clientPhone.trim() || undefined,
       recurrence,
       description: description.trim() || undefined,
-    };
+    });
+
+    if (!validation.success) {
+      const firstError = validation.error.errors[0].message;
+      toast.error(firstError);
+      return;
+    }
+
+    // Cast to any then to specific type to bypass strict Omit mismatch if Zod inference is slightly off
+    const taskData = validation.data as any;
 
     if (isEditing && task && onUpdate) {
       onUpdate(task.id, taskData);

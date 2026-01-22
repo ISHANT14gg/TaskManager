@@ -14,9 +14,12 @@ import { Search, Filter, X, Loader2 } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
+import { useAuth } from "@/hooks/useAuth";
+
 type Task = Database["public"]["Tables"]["tasks"]["Row"];
 
 export function TasksTabContent() {
+    const { profile } = useAuth();
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
@@ -24,15 +27,19 @@ export function TasksTabContent() {
     const [statusFilter, setStatusFilter] = useState("pending"); // default to pending
 
     useEffect(() => {
-        fetchTasks();
-    }, [searchQuery, categoryFilter, statusFilter]);
+        if (profile) {
+            fetchTasks();
+        }
+    }, [searchQuery, categoryFilter, statusFilter, profile]);
 
     const fetchTasks = async () => {
+        if (!profile) return;
         setLoading(true);
         try {
             let query = supabase
                 .from("tasks")
                 .select("*")
+                .eq("organization_id", profile.organization_id) // 🛡️ Org isolation
                 .order("deadline", { ascending: true });
 
             // Apply Search

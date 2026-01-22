@@ -35,7 +35,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import {
   Users, Shield, Mail, Phone, Calendar, Send, ArrowRightLeft,
-  FileSpreadsheet, LayoutDashboard, ListTodo, Activity, AlertCircle
+  FileSpreadsheet, LayoutDashboard, ListTodo, Activity, AlertCircle,
+  Clock, Settings, Plus
 } from "lucide-react";
 import { triggerEmailReminders } from "@/utils/emailService";
 import { TaskTransferDialog } from "@/components/TaskTransferDialog";
@@ -48,7 +49,7 @@ import { CalendarView } from "@/components/dashboard/CalendarView";
 import { CreateTaskDialog } from "@/components/dashboard/CreateTaskDialog";
 import { TasksTabContent } from "@/components/dashboard/TasksTabContent";
 import { AnalyticsCharts } from "@/components/dashboard/AnalyticsCharts";
-import { Plus } from "lucide-react";
+import { profileSchema } from "@/lib/validations";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Task = Database["public"]["Tables"]["tasks"]["Row"];
@@ -66,24 +67,55 @@ export default function Admin() {
     phone: "",
     role: "user" as "admin" | "user",
   });
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [sendingEmails, setSendingEmails] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const [totalTasks, setTotalTasks] = useState(0);
   const [reminderTargetId, setReminderTargetId] = useState<string>("all");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [savingAutomation, setSavingAutomation] = useState(false);
+  const [testingAutomation, setTestingAutomation] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [automationEnabled, setAutomationEnabled] = useState(false);
+  const [automationTime, setAutomationTime] = useState("09:00");
+
+  const istToUtc = (ist: string) => {
+    const [h, m] = ist.split(":").map(Number);
+    let totalMins = h * 60 + m - 330;
+    if (totalMins < 0) totalMins += 1440;
+    const rh = Math.floor(totalMins / 60).toString().padStart(2, "0");
+    const rm = (totalMins % 60).toString().padStart(2, "0");
+    return `${rh}:${rm}`;
+  };
+
+  const utcToIst = (utc: string) => {
+    if (!utc) return "09:00";
+    const [h, m] = utc.split(":").map(Number);
+    let totalMins = h * 60 + m + 330;
+    if (totalMins >= 1440) totalMins -= 1440;
+    const rh = Math.floor(totalMins / 60).toString().padStart(2, "0");
+    const rm = (totalMins % 60).toString().padStart(2, "0");
+    return `${rh}:${rm}`;
+  };
 
   useEffect(() => {
+    if (!profile) return;
+
     fetchUsers();
     fetchTotalTasks();
     fetchRecentTasks();
-  }, []);
+    fetchCategories();
+    fetchOrgSettings();
+  }, [profile?.id, profile?.organization_id]);
 
   const fetchTotalTasks = async () => {
+    if (!profile?.organization_id) return;
     try {
       const { count, error } = await supabase
         .from("tasks")
-        .select("*", { count: "exact", head: true });
+        .select("*", { count: "exact", head: true })
+        .eq("organization_id", profile.organization_id); // 🛡️ Org isolation
 
       if (error) throw error;
       setTotalTasks(count || 0);
@@ -93,10 +125,12 @@ export default function Admin() {
   };
 
   const fetchRecentTasks = async () => {
+    if (!profile?.organization_id) return;
     try {
       const { data, error } = await supabase
         .from("tasks")
         .select("*")
+        .eq("organization_id", profile.organization_id) // 🛡️ Org isolation
         .eq("completed", false)
         .order("deadline", { ascending: true })
         .limit(6);
@@ -121,6 +155,89 @@ export default function Admin() {
       console.error("Error fetching users:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchOrgSettings = async () => {
+    if (!profile?.organization_id) return;
+    try {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("is_automation_enabled, reminder_time")
+        .eq("id", profile.organization_id)
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        setAutomationEnabled(data.is_automation_enabled);
+        setAutomationTime(utcToIst(data.reminder_time));
+      }
+    } catch (error) {
+      console.error("Error fetching org settings:", error);
+    }
+  };
+
+  const handleTestAutomation = async () => {
+    setTestingAutomation(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-task-reminders", {
+        body: { isAutomatedTrigger: true },
+      });
+      if (error) throw error;
+      toast.success(data.message || "Automation scan completed!");
+    } catch (error: any) {
+      console.error("Automation test error:", error);
+      toast.error(error.message || "Failed to run automation scan");
+    } finally {
+      setTestingAutomation(false);
+    }
+  };
+
+  const handleSaveAutomation = async () => {
+    if (!profile?.organization_id) return;
+    setSavingAutomation(true);
+    try {
+      const { error } = await supabase
+        .from("organizations")
+        .update({
+          is_automation_enabled: automationEnabled,
+          reminder_time: istToUtc(automationTime),
+        })
+        .eq("id", profile.organization_id);
+
+      if (error) throw error;
+      toast.success("Automation settings saved successfully!");
+    } catch (error) {
+      console.error("Error saving automation settings:", error);
+      toast.error("Failed to save settings");
+    } finally {
+      setSavingAutomation(false);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("categories")
+        .select("*")
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+      setCategories(data || []);
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+    }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    try {
+      const { error } = await supabase.from("categories").delete().eq("id", id);
+      if (error) throw error;
+      setCategories(categories.filter((c) => c.id !== id));
+      toast.success("Category deleted");
+    } catch (error) {
+      console.error("Error deleting category:", error);
+      toast.error("Failed to delete category. It might be in use.");
     }
   };
 
@@ -150,13 +267,23 @@ export default function Admin() {
   const handleUpdate = async () => {
     if (!editUser) return;
     try {
+      // 🛡️ SECURITY: SaaS-Standard Validation (Zod)
+      const validation = profileSchema.safeParse({
+        full_name: editForm.full_name || undefined,
+        phone: editForm.phone || undefined,
+        role: editForm.role,
+      });
+
+      if (!validation.success) {
+        toast.error(validation.error.errors[0].message);
+        return;
+      }
+
+      const updateData = validation.data;
+
       const { error } = await supabase
         .from("profiles")
-        .update({
-          full_name: editForm.full_name || null,
-          phone: editForm.phone || null,
-          role: editForm.role,
-        })
+        .update(updateData)
         .eq("id", editUser.id);
       if (error) throw error;
       await fetchUsers();
@@ -240,12 +367,17 @@ export default function Admin() {
           </div>
         </div>
 
-        <Tabs defaultValue="overview" className="space-y-12">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-12">
           <TabsList className="bg-transparent p-0 border-b border-slate-200 w-full justify-start h-auto rounded-none">
             <TabsTrigger value="overview" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 font-medium text-slate-500">Overview</TabsTrigger>
             <TabsTrigger value="calendar" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 font-medium text-slate-500">Calendar</TabsTrigger>
             <TabsTrigger value="tasks" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 font-medium text-slate-500">Active Tasks</TabsTrigger>
+            <TabsTrigger value="categories" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 font-medium text-slate-500">Categories</TabsTrigger>
             <TabsTrigger value="users" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 font-medium text-slate-500">Users</TabsTrigger>
+            <TabsTrigger value="automation" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 font-medium text-slate-500">
+              <Clock className="h-4 w-4 mr-2" />
+              Automation
+            </TabsTrigger>
           </TabsList>
 
           {/* OVERVIEW TAB */}
@@ -363,6 +495,189 @@ export default function Admin() {
             <TasksTabContent key={refreshKey} />
           </TabsContent>
 
+          {/* CATEGORIES TAB */}
+          <TabsContent value="categories">
+            <Card>
+              <CardHeader>
+                <CardTitle>Category Management</CardTitle>
+                <CardDescription>View and manage task categories. Categories in use cannot be deleted.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {categories.map((cat) => (
+                    <div key={cat.id} className="flex items-center justify-between p-3 border rounded-lg bg-card">
+                      <span className="font-medium">{cat.name}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive h-8 w-8 p-0"
+                        onClick={() => handleDeleteCategory(cat.id)}
+                      >
+                        <Plus className="h-4 w-4 rotate-45" />
+                      </Button>
+                    </div>
+                  ))}
+                  {categories.length === 0 && (
+                    <div className="col-span-full py-8 text-center text-muted-foreground border border-dashed rounded-lg">
+                      No categories found.
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* AUTOMATION TAB */}
+          <TabsContent value="automation" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Mail className="h-5 w-5 text-primary" />
+                      Email Automation Settings
+                    </CardTitle>
+                    <CardDescription>
+                      Configure your daily automatic reminder emails for your organization.
+                    </CardDescription>
+                  </div>
+                  <Badge variant={automationEnabled ? "default" : "outline"} className="capitalize">
+                    {automationEnabled ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-8">
+                <div className="flex flex-col md:flex-row md:items-center justify-between p-6 border rounded-xl bg-slate-50/50 gap-6">
+                  <div className="space-y-1">
+                    <Label className="text-base font-semibold">Automatic Reminders Status</Label>
+                    <p className="text-sm text-muted-foreground max-w-md">
+                      When enabled, the system will automatically scan and send reminder emails to all users
+                      with pending tasks at your specified time.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4 bg-white p-2 rounded-lg border shadow-sm">
+                    <span className={`text-sm font-medium ${automationEnabled ? "text-primary" : "text-slate-400"}`}>
+                      {automationEnabled ? "Reminders ON" : "Reminders OFF"}
+                    </span>
+                    <Button
+                      variant={automationEnabled ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setAutomationEnabled(!automationEnabled)}
+                      className="transition-all duration-300"
+                    >
+                      {automationEnabled ? "Disable" : "Enable"}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid gap-6 max-w-2xl">
+                  <div className="grid gap-3">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-primary" />
+                      <Label htmlFor="reminder-time" className="text-sm font-semibold uppercase tracking-wider text-slate-500">
+                        Daily Reminder Time (IST)
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-4 border p-4 rounded-lg bg-white shadow-sm">
+                      <Select value={automationTime} onValueChange={setAutomationTime}>
+                        <SelectTrigger id="reminder-time" className="w-[200px] border-none shadow-none text-lg font-medium focus:ring-0">
+                          <SelectValue placeholder="Select time" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 24 }).map((_, i) => {
+                            const hour = i.toString().padStart(2, "0");
+                            return (
+                              <SelectItem key={hour} value={`${hour}:00`}>
+                                {hour}:00 IST
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                      <div className="h-8 w-px bg-slate-200" />
+                      <div className="text-sm text-slate-500 flex flex-col items-start gap-1">
+                        <div className="flex items-center gap-1 font-medium text-primary">
+                          <Activity className="h-4 w-4" /> Server Time: {new Date().getUTCHours().toString().padStart(2, "0")}:00 UTC
+                        </div>
+                        <span className="text-[10px] text-slate-400">All automation runs in UTC</span>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground flex items-start gap-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                      <AlertCircle className="h-4 w-4 text-blue-500 mt-0.5" />
+                      Note: Notifications are processed daily at this time. Only tasks due within the configured reminder window will trigger emails.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t flex justify-end">
+                  <Button
+                    onClick={handleSaveAutomation}
+                    disabled={savingAutomation}
+                    className="min-w-[200px] shadow-lg shadow-primary/20"
+                    size="lg"
+                  >
+                    {savingAutomation ? (
+                      <>
+                        <Plus className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Settings className="mr-2 h-4 w-4" /> Save Automation Settings
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="border-primary/10 bg-gradient-to-br from-white to-slate-50/50">
+                <CardHeader>
+                  <CardTitle className="text-lg">Monitoring</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Last automated run</span>
+                    <span className="font-medium">Never (Scheduled)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Emails sent today</span>
+                    <span className="font-medium text-primary">0 emails</span>
+                  </div>
+                  <div className="pt-4 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full gap-2"
+                      onClick={handleTestAutomation}
+                      disabled={testingAutomation}
+                    >
+                      <Activity className={`h-4 w-4 ${testingAutomation ? 'animate-spin' : ''}`} />
+                      {testingAutomation ? 'Scanning...' : 'Test Full Automation Scan'}
+                    </Button>
+                    <p className="text-[10px] text-slate-400 mt-2">
+                      Triggers the Master Job logic for all organizations.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-primary/10 bg-gradient-to-br from-white to-slate-50/50">
+                <CardHeader>
+                  <CardTitle className="text-lg">Manual Override</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Need to send reminders right now? Use the trigger on the Overview tab.
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab("overview")}>
+                    Go to Trigger
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
           {/* USERS TAB (Existing Table) */}
           <TabsContent value="users">
             <Card>
@@ -427,44 +742,45 @@ export default function Admin() {
         </Tabs>
 
         {/* --- Dialogs (Edit, Delete, Transfer) --- */}
-        {/* Edit User Dialog */}
-        {editUser && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-            <Card className="w-full max-w-md shadow-2xl">
-              <CardHeader>
-                <CardTitle>Edit User Profile</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Full Name</Label>
-                  <Input value={editForm.full_name} onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Email (Read-only)</Label>
-                  <Input value={editForm.email} disabled className="bg-muted" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <Input value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Role</Label>
-                  <Select value={editForm.role} onValueChange={(value: "admin" | "user") => setEditForm({ ...editForm, role: value })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="user">User</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex gap-2 pt-4 justify-end">
-                  <Button variant="outline" onClick={() => setEditUser(null)}>Cancel</Button>
-                  <Button onClick={handleUpdate}>Save Changes</Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        {
+          editUser && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+              <Card className="w-full max-w-md shadow-2xl">
+                <CardHeader>
+                  <CardTitle>Edit User Profile</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Full Name</Label>
+                    <Input value={editForm.full_name} onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Email (Read-only)</Label>
+                    <Input value={editForm.email} disabled className="bg-muted" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Phone</Label>
+                    <Input value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Role</Label>
+                    <Select value={editForm.role} onValueChange={(value: "admin" | "user") => setEditForm({ ...editForm, role: value })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="user">User</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex gap-2 pt-4 justify-end">
+                    <Button variant="outline" onClick={() => setEditUser(null)}>Cancel</Button>
+                    <Button onClick={handleUpdate}>Save Changes</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )
+        }
 
         {/* Delete Confirmation */}
         <AlertDialog open={!!deleteUserId} onOpenChange={(open) => !open && setDeleteUserId(null)}>
@@ -492,7 +808,7 @@ export default function Admin() {
           currentAdminId={profile?.id || ""}
           onTransferComplete={() => {
             fetchTotalTasks();
-            fetchRecentTasks(); // Refresh tasks too
+            fetchRecentTasks();
             toast.success("Task transfer completed!");
           }}
         />
@@ -506,7 +822,7 @@ export default function Admin() {
             setRefreshKey(prev => prev + 1);
           }}
         />
-      </main>
-    </div>
+      </main >
+    </div >
   );
 }

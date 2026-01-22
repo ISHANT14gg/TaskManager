@@ -28,6 +28,7 @@ function isRateLimited(ip: string): boolean {
 // --- SECURITY: Input Validation ---
 const RequestSchema = z.object({
   targetUserId: z.string().uuid().optional().nullable(),
+  isAutomatedTrigger: z.boolean().optional(),
 });
 
 const corsHeaders = {
@@ -58,154 +59,168 @@ serve(async (req) => {
     const resendKey = Deno.env.get("RESEND_API_KEY");
 
     if (!supabaseUrl || !serviceRoleKey || !resendKey) {
-      console.error("Missing config:", {
-        hasUrl: !!supabaseUrl,
-        hasServiceKey: !!serviceRoleKey,
-        hasResend: !!resendKey
-      });
       return new Response(
-        JSON.stringify({ error: "Missing environment variables (Service Key or Resend Key)" }),
+        JSON.stringify({ error: "Missing config" }),
         { status: 500, headers: corsHeaders }
       );
     }
 
-    // 🔐 Auth check (manual) using User Context
-    const supabaseUser = createClient(supabaseUrl, serviceRoleKey, {
-      global: {
-        headers: {
-          Authorization: req.headers.get("Authorization") ?? "",
-        },
-      },
-    });
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseUser.auth.getUser();
-
-    if (!user || authError) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: corsHeaders }
-      );
-    }
-
-    // 👑 Admin check
-    const { data: profile } = await supabaseUser
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (profile?.role !== "admin") {
-      console.log(`User ${user.id} is not admin`);
-      return new Response(
-        JSON.stringify({ error: "Admin only" }),
-        { status: 403, headers: corsHeaders }
-      );
-    }
-    console.log(`Admin authorized: ${user.email}`);
-
-    // 🤖 Use Service Role for data fetching (Bypass RLS)
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
-
-    // 📅 Tasks due in 5 days (including passed deadlines from today)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Start of today
-
-    const fiveDaysLater = new Date(today);
-    fiveDaysLater.setDate(today.getDate() + 5);
-
     // 🛡️ SECURITY: Strict Input Validation
     let payload;
     try {
-      const rawBody = await req.json();
+      const rawBody = await req.json().catch(() => ({}));
       payload = RequestSchema.parse(rawBody);
     } catch (err: any) {
-      console.warn("Input validation failed:", err.message);
       return new Response(
         JSON.stringify({ error: "Invalid request payload", details: err.errors }),
         { status: 400, headers: corsHeaders }
       );
     }
 
-    const { targetUserId } = payload;
+    const { targetUserId, isAutomatedTrigger } = payload;
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const apiKeyHeader = req.headers.get("apikey") ?? "";
 
-    console.log(`Searching for tasks between ${today.toISOString()} and ${fiveDaysLater.toISOString()}`);
-    if (targetUserId) console.log(`Targeting specific user: ${targetUserId}`);
+    // Check if either header contains the service role key
+    const isServiceKey = (serviceRoleKey && (authHeader.includes(serviceRoleKey) || apiKeyHeader === serviceRoleKey));
+
+    // 🔐 Auth check
+    let currentOrgId: string | undefined;
+
+    if (isAutomatedTrigger) {
+      // 🤖 Automated triggers require the Service Role key OR a valid Admin session
+      let authorized = !!isServiceKey;
+
+      if (!authorized && authHeader) {
+        const supabaseUser = createClient(supabaseUrl, serviceRoleKey, {
+          global: { headers: { Authorization: authHeader } },
+        });
+        const { data: { user } } = await supabaseUser.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabaseUser.from("profiles").select("role").eq("id", user.id).single();
+          if (profile?.role === "admin") {
+            authorized = true;
+            console.log(`Admin ${user.email} triggered a manual multi-tenant scan.`);
+          }
+        }
+      }
+
+      if (!authorized) {
+        console.error("Automated trigger blocked: Unauthorized access attempt");
+        return new Response(
+          JSON.stringify({ error: "Unauthorized: Automation scan requires Admin or Service Key" }),
+          { status: 401, headers: corsHeaders }
+        );
+      }
+      console.log("Processing multi-tenant automation scan...");
+    } else {
+      // 👤 Manual triggers require Admin role
+      const supabaseUser = createClient(supabaseUrl, serviceRoleKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+
+      const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
+      if (!user || authError) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+
+      const { data: profile } = await supabaseUser
+        .from("profiles")
+        .select("role, organization_id")
+        .eq("id", user.id)
+        .single();
+
+      if (profile?.role !== "admin") return new Response(JSON.stringify({ error: "Admin only" }), { status: 403, headers: corsHeaders });
+
+      currentOrgId = profile.organization_id;
+      console.log(`Manual trigger by Admin: ${user.email} for Org: ${currentOrgId}`);
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const fiveDaysLater = new Date(today);
+    fiveDaysLater.setDate(today.getDate() + 5);
 
     let query = supabaseAdmin
       .from("tasks")
       .select(`
-        name,
-        deadline,
-        profiles!tasks_user_id_fkey ( email, full_name )
+        id, user_id, organization_id, name, deadline,
+        profiles!tasks_user_id_fkey ( email, full_name, notify_email )
       `)
       .eq("completed", false)
       .gte("deadline", today.toISOString())
       .lte("deadline", fiveDaysLater.toISOString());
 
-    if (targetUserId) {
+    if (isAutomatedTrigger) {
+      // ⏰ Filter by current UTC time (HH:mm)
+      const now = new Date();
+      const currentTime = `${now.getUTCHours().toString().padStart(2, "0")}:${now.getUTCMinutes().toString().padStart(2, "0")}`;
+
+      const { data: activeOrgs } = await supabaseAdmin
+        .from("organizations")
+        .select("id")
+        .eq("is_automation_enabled", true)
+        .eq("reminder_time", currentTime);
+
+      const orgIds = (activeOrgs as any[])?.map(o => o.id) || [];
+      if (orgIds.length === 0) {
+        console.log(`No organizations scheduled for ${currentTime} UTC`);
+        return new Response(JSON.stringify({ success: true, sent: 0, message: "No scheduled orgs" }), { status: 200, headers: corsHeaders });
+      }
+      query = query.in("organization_id", orgIds);
+    } else if (targetUserId) {
       query = query.eq("user_id", targetUserId);
+    } else if (currentOrgId) {
+      query = query.eq("organization_id", currentOrgId);
     }
 
     const { data: tasks, error: fetchError } = await query;
+    if (fetchError) throw fetchError;
 
-    if (fetchError) {
-      console.error("Error fetching tasks:", fetchError);
-      throw fetchError;
-    }
-
-    console.log(`Found ${tasks?.length ?? 0} tasks`);
+    // Filter tasks whose users actually want emails
+    const tasksToNotify = (tasks as any[])?.filter(t => t.profiles?.notify_email) || [];
+    console.log(`Final tasks to notify: ${tasksToNotify.length}`);
 
     let sent = 0;
+    for (const task of tasksToNotify) {
+      // 🛡️ SPAM PROTECTION: Check if already sent today
+      const todayDate = new Date().toISOString().split('T')[0];
+      const { data: existingLog } = await supabaseAdmin
+        .from("notification_logs")
+        .select("id")
+        .eq("task_id", task.id)
+        .gte("sent_at", todayDate + "T00:00:00Z")
+        .lte("sent_at", todayDate + "T23:59:59Z")
+        .limit(1);
 
-    for (const task of tasks ?? []) {
-      const deadlineDate = new Date(task.deadline);
-      const timeDiff = deadlineDate.getTime() - new Date().getTime();
-      const daysRemaining = Math.ceil(timeDiff / (1000 * 3600 * 24));
-
-      console.log(`Sending email for task '${task.name}' to ${task.profiles.email} (Days remaining: ${daysRemaining})`);
+      // Note: The notification_logs table has a refined index on sent_at
 
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendKey}`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           from: "Compliance Tracker <onboarding@resend.dev>",
           to: task.profiles.email,
-          subject: `⏰ Task Due: ${task.name} (${daysRemaining} days remaining)`,
-          html: `
-            <p>Hello ${task.profiles.full_name || "User"},</p>
-            <p>Your task <b>${task.name}</b> is due in <b>${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}</b>.</p>
-            <p>Deadline: ${deadlineDate.toDateString()}</p>
-          `,
+          subject: `⏰ Reminder: ${task.name} is due soon`,
+          html: `<p>Hello ${task.profiles.full_name || "User"},</p><p>Your task <b>${task.name}</b> is due on ${new Date(task.deadline).toDateString()}.</p>`,
         }),
       });
 
       if (res.ok) {
-        console.log(`Email sent successfully to ${task.profiles.email}`);
         sent++;
-      } else {
-        const errorText = await res.text();
-        console.error(`Failed to send email to ${task.profiles.email}:`, errorText);
+        await supabaseAdmin.from("notification_logs").insert({
+          task_id: task.id,
+          user_id: task.user_id,
+          organization_id: task.organization_id,
+          channel: "email",
+          status: "sent",
+        });
       }
-
-      // ⏳ Rate limit avoidance (Resend free tier)
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(r => setTimeout(r, 500));
     }
 
-    return new Response(
-      JSON.stringify({ success: true, sent }),
-      { status: 200, headers: corsHeaders }
-    );
+    return new Response(JSON.stringify({ success: true, sent }), { status: 200, headers: corsHeaders });
   } catch (err: any) {
     console.error("Function error:", err);
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 500, headers: corsHeaders }
-    );
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
   }
 });

@@ -3,9 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { ComplianceTask } from "@/types/task";
 import { getNextDeadline } from "@/lib/taskUtils";
+import { taskSchema } from "@/lib/validations";
+import { toast } from "sonner";
 
 export function useTasks() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [tasks, setTasks] = useState<ComplianceTask[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -59,8 +61,19 @@ export function useTasks() {
     }
 
     try {
-      // Convert category format (gst -> gst, income-tax -> income_tax)
-      const dbCategory = task.category.replace("-", "_");
+      // 🛡️ SECURITY: Defense-in-Depth Validation
+      const validation = taskSchema.safeParse({
+        ...task,
+        deadline: task.deadline,
+      });
+
+      if (!validation.success) {
+        toast.error(`Validation Error: ${validation.error.errors[0].message}`);
+        throw new Error(validation.error.errors[0].message);
+      }
+
+      const validatedTask = validation.data;
+      const dbCategory = validatedTask.category.replace("-", "_");
 
       console.log("Adding task to database:", {
         user_id: user.id,
@@ -73,6 +86,7 @@ export function useTasks() {
         .from("tasks")
         .insert({
           user_id: user.id,
+          organization_id: profile?.organization_id, // 🛡️ Multi-tenancy enforcement
           name: task.name,
           category: dbCategory,
           deadline: task.deadline.toISOString(),
@@ -113,6 +127,17 @@ export function useTasks() {
     if (!user) return;
 
     try {
+      // 🛡️ SECURITY: Partial Validation for updates
+      if (updates.name !== undefined || updates.category !== undefined || updates.deadline !== undefined) {
+        // We only validate the fields being updated
+        const partialSchema = taskSchema.partial();
+        const validation = partialSchema.safeParse(updates);
+        if (!validation.success) {
+          toast.error(`Update Error: ${validation.error.errors[0].message}`);
+          throw new Error(validation.error.errors[0].message);
+        }
+      }
+
       const updateData: any = {};
 
       if (updates.name !== undefined) updateData.name = updates.name;
@@ -141,7 +166,8 @@ export function useTasks() {
         .from("tasks")
         .update(updateData)
         .eq("id", id)
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .eq("organization_id", profile?.organization_id); // 🛡️ Org isolation
 
       if (error) {
         console.error("Database error updating task:", error);
@@ -183,7 +209,8 @@ export function useTasks() {
         .from("tasks")
         .delete()
         .eq("id", id)
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .eq("organization_id", profile?.organization_id); // 🛡️ Org isolation
 
       if (error) throw error;
 

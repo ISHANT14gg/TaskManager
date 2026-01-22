@@ -7,20 +7,27 @@ import {
 } from "recharts";
 import { Loader2, PieChart as PieChartIcon, BarChart as BarChartIcon } from "lucide-react";
 
+import { useAuth } from "@/hooks/useAuth";
+
 export function AnalyticsCharts() {
+    const { profile } = useAuth();
     const [loading, setLoading] = useState(true);
     const [categoryData, setCategoryData] = useState<any[]>([]);
     const [statusData, setStatusData] = useState<any[]>([]);
 
     useEffect(() => {
-        fetchAnalytics();
-    }, []);
+        if (profile) {
+            fetchAnalytics();
+        }
+    }, [profile]);
 
     const fetchAnalytics = async () => {
+        if (!profile) return;
         try {
             const { data: tasks, error } = await supabase
                 .from("tasks")
-                .select("category, completed");
+                .select("category, completed")
+                .eq("organization_id", profile.organization_id); // 🛡️ Org isolation
 
             if (error) throw error;
 

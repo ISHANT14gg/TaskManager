@@ -1,4 +1,4 @@
-export type TaskCategory = "gst" | "income-tax" | "insurance" | "transport";
+export type TaskCategory = "gst" | "income-tax" | "insurance" | "transport" | string;
 export type RecurrenceType = "weekly" | "monthly" | "quarterly" | "yearly" | "one-time";
 export type UrgencyLevel = "urgent" | "warning" | "upcoming" | "normal" | "completed";
 export type NewComplianceTask = Omit<ComplianceTask, "id" | "completed">;

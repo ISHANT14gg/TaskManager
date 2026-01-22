@@ -5,8 +5,9 @@ import path from "path";
 // https://vitejs.dev/config/
 export default defineConfig({
   server: {
-    host: "::",
+    host: true,
     port: 8080,
+    strictPort: false, // Allow shifting to 8081 if 8080 is busy
     hmr: {
       overlay: false,
     },

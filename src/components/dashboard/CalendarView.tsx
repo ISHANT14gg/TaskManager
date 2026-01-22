@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar as CalendarIcon, Loader2 } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
+import { useAuth } from '@/hooks/useAuth';
 
 // Setup localizer
 const localizer = momentLocalizer(moment);
@@ -22,18 +23,23 @@ interface CalendarEvent {
 }
 
 export function CalendarView() {
+    const { profile } = useAuth();
     const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetchTasks();
-    }, []);
+        if (profile) {
+            fetchTasks();
+        }
+    }, [profile]);
 
     const fetchTasks = async () => {
+        if (!profile) return;
         try {
             const { data, error } = await supabase
                 .from('tasks')
-                .select('*');
+                .select('*')
+                .eq('organization_id', profile.organization_id); // 🛡️ Org isolation
 
             if (error) throw error;
 
