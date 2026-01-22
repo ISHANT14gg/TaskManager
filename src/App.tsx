@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import Auth from "./pages/Auth";
 import Index from "./pages/Index";
 import Admin from "./pages/Admin";
+import Settings from "./pages/Settings";
 import ResetPassword from "./pages/ResetPassword";
 import ProtectedAdminRoute from "./routes/ProtectedAdminRoute";
 
@@ -31,6 +32,12 @@ export default function App() {
         <Route
           path="/"
           element={user ? <Index /> : <Navigate to="/auth" />}
+        />
+
+        {/* Settings */}
+        <Route
+          path="/settings"
+          element={user ? <Settings /> : <Navigate to="/auth" />}
         />
 
         {/* 🔐 Admin Protected */}

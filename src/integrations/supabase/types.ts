@@ -65,6 +65,53 @@ export type Database = {
           },
         ]
       }
+      user_google_tokens: {
+        Row: {
+          id: string
+          user_id: string
+          access_token: string
+          refresh_token: string
+          token_expires_at: string
+          calendar_id: string
+          sync_enabled: boolean
+          reminder_days: number[]
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          access_token: string
+          refresh_token: string
+          token_expires_at: string
+          calendar_id?: string
+          sync_enabled?: boolean
+          reminder_days?: number[]
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          access_token?: string
+          refresh_token?: string
+          token_expires_at?: string
+          calendar_id?: string
+          sync_enabled?: boolean
+          reminder_days?: number[]
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_google_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -122,6 +169,10 @@ export type Database = {
           transferred_at?: string | null
           client_name: string | null
           client_phone: string | null
+          google_event_id: string | null
+          google_sync_status: string | null
+          google_sync_error: string | null
+          google_last_synced_at: string | null
         }
         Insert: {
           category: string
@@ -140,6 +191,10 @@ export type Database = {
           transferred_at?: string | null
           client_name?: string | null
           client_phone?: string | null
+          google_event_id?: string | null
+          google_sync_status?: string | null
+          google_sync_error?: string | null
+          google_last_synced_at?: string | null
         }
         Update: {
           category?: string
@@ -158,6 +213,10 @@ export type Database = {
           transferred_at?: string | null
           client_name?: string | null
           client_phone?: string | null
+          google_event_id?: string | null
+          google_sync_status?: string | null
+          google_sync_error?: string | null
+          google_last_synced_at?: string | null
         }
         Relationships: [
           {

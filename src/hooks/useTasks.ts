@@ -5,6 +5,7 @@ import { ComplianceTask } from "@/types/task";
 import { getNextDeadline } from "@/lib/taskUtils";
 import { taskSchema } from "@/lib/validations";
 import { toast } from "sonner";
+import { syncTaskToCalendar } from "@/utils/googleCalendarService";
 
 export function useTasks() {
   const { user, profile } = useAuth();
@@ -122,12 +123,28 @@ export function useTasks() {
       };
 
       setTasks((prev) => [...prev, newTask]);
+
+      // 📅 Sync to Google Calendar (fire and forget - don't block UI)
+      syncTaskToCalendar({
+        id: data.id,
+        name: data.name,
+        description: data.description || undefined,
+        category: data.category,
+        client_name: data.client_name || undefined,
+        deadline: data.deadline,
+        completed: false,
+        user_id: user.id,
+      }, "create")
+        .then(result => console.log("Calendar sync result:", result))
+        .catch((err) => console.error("Calendar sync skipped:", err));
+
       return newTask;
     } catch (error) {
       console.error("Error adding task:", error);
       throw error;
     }
   };
+
 
   const updateTask = async (id: string, updates: Partial<ComplianceTask>) => {
     if (!user) return;
@@ -207,6 +224,22 @@ export function useTasks() {
           return updated;
         })
       );
+
+      // 📅 Get the full task data for calendar sync
+      const currentTask = tasks.find(t => t.id === id);
+      if (currentTask && user) {
+        const syncAction = updates.completed ? "delete" : "update";
+        syncTaskToCalendar({
+          id,
+          name: updates.name || currentTask.name,
+          description: updates.description || currentTask.description,
+          category: (updates.category || currentTask.category).replace("-", "_"),
+          client_name: updates.client_name || currentTask.client_name,
+          deadline: (updates.deadline || currentTask.deadline).toISOString(),
+          completed: updates.completed ?? currentTask.completed,
+          user_id: user.id,
+        }, syncAction).catch((err) => console.log("Calendar sync skipped:", err));
+      }
     } catch (error) {
       console.error("Error updating task:", error);
       throw error;

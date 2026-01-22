@@ -1,4 +1,4 @@
-import { ClipboardCheck, LogOut, Shield, User } from "lucide-react";
+import { ClipboardCheck, LogOut, Shield, User, Settings } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -112,6 +112,10 @@ export function Header() {
                       </Badge>
                     </div>
                   </DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => navigate("/settings")}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Settings</span>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />
