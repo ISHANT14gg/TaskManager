@@ -18,15 +18,6 @@ export function Header() {
   const location = useLocation();
   const { profile, signOut, isAdmin, loading } = useAuth();
 
-  if (!loading && profile) {
-    console.log("🛠️ HEADER_DIAGNOSTIC:", {
-      email: profile.email,
-      role: profile.role,
-      orgId: profile.organization_id,
-      isAdmin
-    });
-  }
-
   const handleSignOut = async () => {
     await signOut();
     navigate("/auth");

@@ -32,11 +32,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, Shield, Mail, Phone, Calendar, Send, ArrowRightLeft,
   FileSpreadsheet, LayoutDashboard, ListTodo, Activity, AlertCircle,
-  Clock, Settings, Plus
+  Clock, Settings, Plus, CheckCircle2, Search, SlidersHorizontal
 } from "lucide-react";
 import { triggerEmailReminders } from "@/utils/emailService";
 import { TaskTransferDialog } from "@/components/TaskTransferDialog";
@@ -56,7 +64,7 @@ type Task = Database["public"]["Tables"]["tasks"]["Row"];
 
 export default function Admin() {
   const { profile } = useAuth();
-  const [users, setUsers] = useState<Profile[]>([]);
+  const [users, setUsers] = useState<(Profile & { tasks?: Task[] })[]>([]);
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
@@ -79,6 +87,12 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState("overview");
   const [automationEnabled, setAutomationEnabled] = useState(false);
   const [automationTime, setAutomationTime] = useState("09:00");
+
+  // User Directory filters & sorting
+  const [userSearch, setUserSearch] = useState("");
+  const [userSortBy, setUserSortBy] = useState<"name" | "pending" | "total">("name");
+  const [userFilterRole, setUserFilterRole] = useState<"all" | "admin" | "user">("all");
+  const [userFilterStatus, setUserFilterStatus] = useState<"all" | "attention" | "progress" | "ontrack" | "notasks">("all");
 
   const istToUtc = (ist: string) => {
     const [h, m] = ist.split(":").map(Number);
@@ -144,19 +158,35 @@ export default function Admin() {
 
   const fetchUsers = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch profiles first
+      const { data: profilesData, error: profilesError } = await supabase
         .from("profiles")
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      setUsers(data || []);
+      if (profilesError) throw profilesError;
+
+      // Fetch all tasks
+      const { data: tasksData, error: tasksError } = await supabase
+        .from("tasks")
+        .select("id, name, completed, user_id");
+
+      if (tasksError) throw tasksError;
+
+      // Combine profiles with their tasks
+      const usersWithTasks = (profilesData || []).map((profile) => ({
+        ...profile,
+        tasks: (tasksData || []).filter((task) => task.user_id === profile.id),
+      }));
+
+      setUsers(usersWithTasks);
     } catch (error) {
       console.error("Error fetching users:", error);
     } finally {
       setLoading(false);
     }
   };
+
 
   const fetchOrgSettings = async () => {
     if (!profile?.organization_id) return;
@@ -685,67 +715,270 @@ export default function Admin() {
             </div>
           </TabsContent>
 
-          {/* USERS TAB (Existing Table) */}
+          {/* USERS TAB - REDESIGNED */}
           <TabsContent value="users">
+            {/* 📊 Admin Insights Bar */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-blue-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-blue-600 font-medium uppercase tracking-wide">Total Users</p>
+                      <p className="text-2xl font-bold text-blue-900">{users.length}</p>
+                    </div>
+                    <Users className="h-8 w-8 text-blue-400" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-amber-600 font-medium uppercase tracking-wide">With Pending</p>
+                      <p className="text-2xl font-bold text-amber-900">
+                        {users.filter(u => u.tasks?.some(t => !t.completed)).length}
+                      </p>
+                    </div>
+                    <Clock className="h-8 w-8 text-amber-400" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-red-50 to-red-100/50 border-red-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-red-600 font-medium uppercase tracking-wide">Overloaded (&gt;10)</p>
+                      <p className="text-2xl font-bold text-red-900">
+                        {users.filter(u => (u.tasks?.filter(t => !t.completed).length || 0) > 10).length}
+                      </p>
+                    </div>
+                    <AlertCircle className="h-8 w-8 text-red-400" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-slate-50 to-slate-100/50 border-slate-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-slate-600 font-medium uppercase tracking-wide">Admins / Users</p>
+                      <p className="text-2xl font-bold text-slate-900">
+                        {users.filter(u => u.role === 'admin').length} / {users.filter(u => u.role === 'user').length}
+                      </p>
+                    </div>
+                    <Shield className="h-8 w-8 text-slate-400" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
             <Card>
-              <CardHeader>
-                <CardTitle>User Directory</CardTitle>
-                <CardDescription>Manage master user list and permissions</CardDescription>
+              <CardHeader className="pb-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    <CardTitle>User Directory</CardTitle>
+                    <CardDescription>Manage master user list and permissions • Quick overview of workload & status</CardDescription>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Search */}
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search users..."
+                        className="pl-8 w-[180px] h-9"
+                        value={userSearch}
+                        onChange={(e) => setUserSearch(e.target.value)}
+                      />
+                    </div>
+                    {/* Sort */}
+                    <Select value={userSortBy} onValueChange={(v: "name" | "pending" | "total") => setUserSortBy(v)}>
+                      <SelectTrigger className="w-[130px] h-9">
+                        <SelectValue placeholder="Sort by" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="name">Name</SelectItem>
+                        <SelectItem value="pending">Pending ↓</SelectItem>
+                        <SelectItem value="total">Total Tasks ↓</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {/* Filter Role */}
+                    <Select value={userFilterRole} onValueChange={(v: "all" | "admin" | "user") => setUserFilterRole(v)}>
+                      <SelectTrigger className="w-[100px] h-9">
+                        <SelectValue placeholder="Role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Roles</SelectItem>
+                        <SelectItem value="admin">Admins</SelectItem>
+                        <SelectItem value="user">Users</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {/* Filter Status */}
+                    <Select value={userFilterStatus} onValueChange={(v: "all" | "attention" | "progress" | "ontrack" | "notasks") => setUserFilterStatus(v)}>
+                      <SelectTrigger className="w-[140px] h-9">
+                        <SelectValue placeholder="Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="attention">⚠️ Needs Attention</SelectItem>
+                        <SelectItem value="progress">🔄 In Progress</SelectItem>
+                        <SelectItem value="ontrack">✅ On Track</SelectItem>
+                        <SelectItem value="notasks">— No Tasks</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead>User Profile</TableHead>
-                        <TableHead>Contact</TableHead>
-                        <TableHead>Role</TableHead>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="w-[250px]">User</TableHead>
+                        <TableHead className="text-center">Tasks</TableHead>
+                        <TableHead className="text-center">Status</TableHead>
+                        <TableHead className="text-center">Role</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {users.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No users found</TableCell>
-                        </TableRow>
-                      ) : (
-                        users.map((user) => (
-                          <TableRow key={user.id}>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-medium">{user.full_name || "Un-named User"}</span>
-                                <span className="text-xs text-muted-foreground">Joined {new Date(user.created_at).toLocaleDateString()}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col gap-1 text-sm">
-                                <span className="flex items-center gap-1"><Mail className="h-3 w-3" /> {user.email}</span>
-                                {user.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" /> {user.phone}</span>}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={user.role === "admin" ? "default" : "secondary"}>{user.role}</Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button variant="ghost" size="icon" onClick={() => handleExportTasks(user)} title="Export Tasks">
-                                  <FileSpreadsheet className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleEdit(user)}>Edit</Button>
-                                {user.id !== profile?.id && (
-                                  <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => setDeleteUserId(user.id)}>Delete</Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
+                      {(() => {
+                        // Helper to get user status
+                        const getUserStatus = (user: typeof users[0]) => {
+                          const total = user.tasks?.length || 0;
+                          const pending = user.tasks?.filter(t => !t.completed).length || 0;
+                          if (total === 0) return "notasks";
+                          if (pending > 10) return "attention";
+                          if (pending > 0) return "progress";
+                          return "ontrack";
+                        };
+
+                        // Filter and sort users
+                        const filteredUsers = users
+                          .filter(user => {
+                            // Search filter
+                            if (userSearch) {
+                              const search = userSearch.toLowerCase();
+                              const matchesName = user.full_name?.toLowerCase().includes(search);
+                              const matchesEmail = user.email?.toLowerCase().includes(search);
+                              if (!matchesName && !matchesEmail) return false;
+                            }
+                            // Role filter
+                            if (userFilterRole !== "all" && user.role !== userFilterRole) return false;
+                            // Status filter
+                            if (userFilterStatus !== "all" && getUserStatus(user) !== userFilterStatus) return false;
+                            return true;
+                          })
+                          .sort((a, b) => {
+                            if (userSortBy === "name") {
+                              return (a.full_name || "").localeCompare(b.full_name || "");
+                            }
+                            if (userSortBy === "pending") {
+                              const aPending = a.tasks?.filter(t => !t.completed).length || 0;
+                              const bPending = b.tasks?.filter(t => !t.completed).length || 0;
+                              return bPending - aPending; // Descending
+                            }
+                            if (userSortBy === "total") {
+                              return (b.tasks?.length || 0) - (a.tasks?.length || 0); // Descending
+                            }
+                            return 0;
+                          });
+
+                        if (filteredUsers.length === 0) {
+                          return (
+                            <TableRow>
+                              <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                {users.length === 0 ? "No users found" : "No users match your filters"}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+
+                        return filteredUsers.map((user) => {
+
+                          const totalTasks = user.tasks?.length || 0;
+                          const pendingTasks = user.tasks?.filter(t => !t.completed).length || 0;
+                          const completedTasks = totalTasks - pendingTasks;
+
+                          // Status logic
+                          let statusBadge;
+                          if (totalTasks === 0) {
+                            statusBadge = <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">— No Tasks</Badge>;
+                          } else if (pendingTasks > 10) {
+                            statusBadge = <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200"><AlertCircle className="h-3 w-3 mr-1" />Needs Attention</Badge>;
+                          } else if (pendingTasks > 0) {
+                            statusBadge = <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200"><Clock className="h-3 w-3 mr-1" />In Progress</Badge>;
+                          } else {
+                            statusBadge = <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200"><CheckCircle2 className="h-3 w-3 mr-1" />On Track</Badge>;
+                          }
+
+                          return (
+                            <TableRow key={user.id} className="hover:bg-muted/30 transition-colors">
+                              <TableCell>
+                                <div className="flex items-center gap-3">
+                                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center font-semibold text-primary">
+                                    {(user.full_name || user.email || "U")[0].toUpperCase()}
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="font-semibold text-sm">{user.full_name || "Un-named User"}</span>
+                                    <span className="text-xs text-muted-foreground">{user.email}</span>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="text-lg font-bold text-slate-800">{totalTasks}</span>
+                                  <div className="flex gap-2 text-xs">
+                                    <span className="text-amber-600 font-medium">{pendingTasks} pending</span>
+                                    <span className="text-green-600 font-medium">{completedTasks} done</span>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {statusBadge}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge variant={user.role === "admin" ? "default" : "secondary"} className="uppercase text-[10px]">
+                                  {user.role === "admin" ? <Shield className="h-3 w-3 mr-1" /> : null}
+                                  {user.role}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                      <Settings className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-48">
+                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => handleExportTasks(user)}>
+                                      <FileSpreadsheet className="h-4 w-4 mr-2" /> Export Tasks
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleEdit(user)}>
+                                      <Mail className="h-4 w-4 mr-2" /> Edit User
+                                    </DropdownMenuItem>
+                                    {user.id !== profile?.id && (
+                                      <DropdownMenuItem
+                                        className="text-destructive focus:text-destructive"
+                                        onClick={() => setDeleteUserId(user.id)}
+                                      >
+                                        <AlertCircle className="h-4 w-4 mr-2" /> Delete User
+                                      </DropdownMenuItem>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        });
+                      })()}
                     </TableBody>
                   </Table>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
+
         </Tabs>
 
         {/* --- Dialogs (Edit, Delete, Transfer) --- */}
