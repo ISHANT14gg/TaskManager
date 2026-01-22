@@ -216,10 +216,12 @@ export default function Admin() {
   };
 
   const fetchCategories = async () => {
+    if (!profile?.organization_id) return;
     try {
       const { data, error } = await supabase
         .from("categories")
         .select("*")
+        .eq("organization_id", profile.organization_id)
         .order("name", { ascending: true });
 
       if (error) throw error;
@@ -230,8 +232,13 @@ export default function Admin() {
   };
 
   const handleDeleteCategory = async (id: string) => {
+    if (!profile?.organization_id) return;
     try {
-      const { error } = await supabase.from("categories").delete().eq("id", id);
+      const { error } = await supabase
+        .from("categories")
+        .delete()
+        .eq("id", id)
+        .eq("organization_id", profile.organization_id);
       if (error) throw error;
       setCategories(categories.filter((c) => c.id !== id));
       toast.success("Category deleted");

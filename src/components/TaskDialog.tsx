@@ -20,6 +20,7 @@ import CreatableSelect from "react-select/creatable";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { taskSchema } from "@/lib/validations";
+import { useAuth } from "@/hooks/useAuth";
 
 /* ===============================
    Types
@@ -51,6 +52,7 @@ export function TaskDialog({
   const [clientPhone, setClientPhone] = useState("");
   const [recurrence, setRecurrence] = useState<RecurrenceType>("monthly");
   const [description, setDescription] = useState("");
+  const { profile } = useAuth();
 
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const isEditing = !!task;
@@ -59,13 +61,17 @@ export function TaskDialog({
      Fetch categories from DB
   ================================ */
   useEffect(() => {
-    fetchCategories();
-  }, []);
+    if (profile?.organization_id) {
+      fetchCategories();
+    }
+  }, [profile?.organization_id]);
 
   const fetchCategories = async () => {
+    if (!profile?.organization_id) return;
     const { data } = await supabase
       .from("categories")
       .select("name")
+      .eq("organization_id", profile.organization_id)
       .order("name");
 
     if (data) {
@@ -105,13 +111,16 @@ export function TaskDialog({
      Ensure category exists (FIXED)
   ================================ */
   const ensureCategoryExists = async (value: string) => {
-    if (!value?.trim()) return;
+    if (!value?.trim() || !profile?.organization_id) return;
 
     const { error } = await supabase
       .from("categories")
       .upsert(
-        { name: value.trim() },
-        { onConflict: "name" }
+        {
+          name: value.trim(),
+          organization_id: profile.organization_id
+        },
+        { onConflict: "organization_id,name" }
       );
 
     if (error) {
