@@ -107,6 +107,28 @@ export default function Admin() {
     fetchRecentTasks();
     fetchCategories();
     fetchOrgSettings();
+
+    // 🚀 Real-time updates for task changes
+    const channel = supabase
+      .channel('admin-tasks-realtime')
+      .on(
+        'postgres_changes' as any,
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tasks'
+        },
+        () => {
+          fetchUsers();
+          fetchTotalTasks();
+          fetchRecentTasks();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [profile?.id, profile?.organization_id]);
 
   const fetchTotalTasks = async () => {
