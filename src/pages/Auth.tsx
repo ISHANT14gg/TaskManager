@@ -80,6 +80,12 @@ export default function Auth() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          org_name: "Sharma Accountant", // 🏢 Brand-based organization assignment
+          full_name: email.split("@")[0], // Fallback name
+        },
+      },
     });
 
     setLoading(false);

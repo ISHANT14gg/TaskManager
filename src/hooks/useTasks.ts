@@ -25,6 +25,19 @@ export function useTasks() {
     if (!user) return;
 
     try {
+      console.log(`🔍 [SESSION_CONTEXT] User: ${user.id} | Org: ${profile?.organization_id || "MISSING"} | Role: ${profile?.role || "UNKNOWN"}`);
+
+      // Let's also check EVERYTHING visibility to see if RLS is the culprit
+      const { data: allUserTasks, error: allTasksError } = await supabase
+        .from("tasks")
+        .select("id, name, user_id, organization_id")
+        .limit(10);
+
+      console.log(`🧪 [RLS_TEST] I can see ${allUserTasks?.length || 0} tasks total in the database under current RLS.`);
+      if (allUserTasks && allUserTasks.length > 0) {
+        console.table(allUserTasks);
+      }
+
       const { data, error } = await supabase
         .from("tasks")
         .select("*")
@@ -32,6 +45,15 @@ export function useTasks() {
         .order("deadline", { ascending: true });
 
       if (error) throw error;
+
+      console.log(`📊 FETCH_SUCCESS: Found ${data?.length || 0} tasks for user ${user.id}`);
+      if (data && data.length > 0) {
+        console.log("📋 FIRST_TASK_DEBUG:", {
+          id: data[0].id,
+          name: data[0].name,
+          orgId: data[0].organization_id
+        });
+      }
 
       // Convert database tasks to ComplianceTask format
       const formattedTasks: ComplianceTask[] = (data || []).map((task) => ({

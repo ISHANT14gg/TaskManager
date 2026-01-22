@@ -16,7 +16,16 @@ import { Badge } from "@/components/ui/badge";
 export function Header() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile, signOut, isAdmin } = useAuth();
+  const { profile, signOut, isAdmin, loading } = useAuth();
+
+  if (!loading && profile) {
+    console.log("🛠️ HEADER_DIAGNOSTIC:", {
+      email: profile.email,
+      role: profile.role,
+      orgId: profile.organization_id,
+      isAdmin
+    });
+  }
 
   const handleSignOut = async () => {
     await signOut();
@@ -51,6 +60,11 @@ export function Header() {
               <h1 className="text-xl font-bold text-foreground">
                 Compliance Tracker
               </h1>
+              {profile && (
+                <div className="opacity-10 hover:opacity-100 transition-opacity cursor-help text-[8px] bg-muted px-1 rounded inline-block">
+                  Role: {profile.role} | Org: {profile.organization_id?.slice(0, 8)}...
+                </div>
+              )}
               <p className="text-sm text-muted-foreground">
                 Indian Statutory Deadline Manager
               </p>

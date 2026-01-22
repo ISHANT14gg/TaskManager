@@ -99,11 +99,31 @@ export async function transferTasks(
     }
 
     try {
+        // 🛡️ SECURITY: Fetch target user's organization_id to ensure task isolation
+        const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("organization_id")
+            .eq("id", targetUserId)
+            .single();
+
+        if (profileError || !profile) {
+            console.error("Error fetching target user profile:", profileError);
+            throw new Error("Target user profile not found or organization missing");
+        }
+
+        console.log("🔄 TRANSFERRING_TASKS:", {
+            count: taskIds.length,
+            targetUserId,
+            newOrgId: profile.organization_id,
+            adminId
+        });
+
         // Update all tasks in a single batch
         const { error } = await supabase
             .from("tasks")
             .update({
                 user_id: targetUserId,
+                organization_id: profile.organization_id, // 🛡️ SYNC: Move task to new organization
                 transferred_from: adminId,
                 transferred_at: new Date().toISOString(),
             })
@@ -113,6 +133,12 @@ export async function transferTasks(
             console.error("Error transferring tasks:", error);
             throw error;
         }
+
+        console.log("✅ TRANSFER_SUCCESS:", {
+            count: taskIds.length,
+            targetUserId,
+            orgId: profile.organization_id
+        });
 
         return {
             success: true,
