@@ -59,7 +59,16 @@ export function TaskCard({ task, onComplete }: TaskCardProps) {
                             "text-sm font-medium",
                             isUrgent && !task.completed ? "text-destructive" : ""
                         )}>
-                            {formatDistanceToNow(new Date(task.deadline), { addSuffix: true })}
+                            {(() => {
+                                try {
+                                    if (!task.deadline) return "No deadline";
+                                    const date = new Date(task.deadline);
+                                    if (isNaN(date.getTime())) return "Invalid date";
+                                    return formatDistanceToNow(date, { addSuffix: true });
+                                } catch (e) {
+                                    return "Date error";
+                                }
+                            })()}
                         </span>
                     </div>
 

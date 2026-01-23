@@ -44,8 +44,17 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, Shield, Mail, Phone, Calendar, Send, ArrowRightLeft,
   FileSpreadsheet, LayoutDashboard, ListTodo, Activity, AlertCircle,
-  Clock, Settings, Plus, CheckCircle2, Search, SlidersHorizontal
+  Clock, Settings, Plus, CheckCircle2, Search, SlidersHorizontal,
+  Eye, Trophy
 } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { triggerEmailReminders } from "@/utils/emailService";
 import { TaskTransferDialog } from "@/components/TaskTransferDialog";
 import { fetchUserTasks, downloadTasksCSV } from "@/utils/taskTransferService";
@@ -68,7 +77,9 @@ export default function Admin() {
   const [users, setUsers] = useState<(Profile & { tasks?: Task[] })[]>([]);
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
+  const [viewTasksUser, setViewTasksUser] = useState<(Profile & { tasks?: Task[] }) | null>(null);
   const [editUser, setEditUser] = useState<Profile | null>(null);
   const [editForm, setEditForm] = useState({
     full_name: "",
@@ -170,7 +181,7 @@ export default function Admin() {
       // Fetch all tasks
       const { data: tasksData, error: tasksError } = await supabase
         .from("tasks")
-        .select("id, name, completed, user_id");
+        .select("*");
 
       if (tasksError) throw tasksError;
 
@@ -948,8 +959,14 @@ export default function Admin() {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <div className="flex flex-col items-center gap-1">
-                                  <span className="text-lg font-bold text-slate-800">{totalTasks}</span>
+                                <div
+                                  className="flex flex-col items-center gap-1 cursor-pointer group hover:bg-slate-100 p-2 rounded-md transition-all"
+                                  onClick={() => setViewTasksUser(user)}
+                                >
+                                  <span className="text-lg font-bold text-slate-800 group-hover:text-primary transition-colors flex items-center gap-2">
+                                    {totalTasks}
+                                    <Eye className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </span>
                                   <div className="flex gap-2 text-xs">
                                     <span className="text-amber-600 font-medium">{pendingTasks} pending</span>
                                     <span className="text-green-600 font-medium">{completedTasks} done</span>
@@ -1086,7 +1103,87 @@ export default function Admin() {
             setRefreshKey(prev => prev + 1);
           }}
         />
-      </main >
-    </div >
+
+        {/* View User Tasks Sheet */}
+        <Sheet open={!!viewTasksUser} onOpenChange={(open) => !open && setViewTasksUser(null)}>
+          <SheetContent className="sm:max-w-xl w-full overflow-hidden flex flex-col h-full">
+            <SheetHeader className="mb-6">
+              <SheetTitle className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                  {(viewTasksUser?.full_name || viewTasksUser?.email || "U")[0].toUpperCase()}
+                </div>
+                <div>
+                  {viewTasksUser?.full_name || "Un-named User"}
+                  <span className="block text-sm font-normal text-muted-foreground">{viewTasksUser?.email}</span>
+                </div>
+              </SheetTitle>
+              <SheetDescription>
+                Reviewing task workload and compliance status.
+              </SheetDescription>
+            </SheetHeader>
+
+            <Tabs defaultValue="pending" className="flex-1 flex flex-col h-full overflow-hidden">
+              <TabsList className="w-full justify-start border-b rounded-none bg-transparent p-0 mb-4 h-auto">
+                <TabsTrigger value="pending" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:shadow-none px-4 py-2">
+                  Pending ({viewTasksUser?.tasks?.filter(t => !t.completed).length || 0})
+                </TabsTrigger>
+                <TabsTrigger value="completed" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:shadow-none px-4 py-2">
+                  Completed ({viewTasksUser?.tasks?.filter(t => t.completed).length || 0})
+                </TabsTrigger>
+              </TabsList>
+
+              <ScrollArea className="flex-1 pr-4 -mr-4">
+                <TabsContent value="pending" className="mt-0 space-y-4 pb-4">
+                  {viewTasksUser?.tasks?.filter(t => !t.completed).length === 0 ? (
+                    <div className="text-center py-12 border-2 border-dashed rounded-lg text-muted-foreground">
+                      <Trophy className="h-12 w-12 mx-auto mb-2 text-yellow-400" />
+                      <p>All clean! No pending tasks.</p>
+                    </div>
+                  ) : (
+                    viewTasksUser?.tasks?.filter(t => !t.completed)
+                      .sort((a, b) => new Date(a.deadline || "").getTime() - new Date(b.deadline || "").getTime())
+                      .map(task => (
+                        <TaskCard
+                          key={task.id}
+                          task={task}
+                          onComplete={() => {
+                            // Optimistic update
+                            const updatedTask = { ...task, completed: true };
+                            const updatedUser = {
+                              ...viewTasksUser,
+                              tasks: viewTasksUser.tasks?.map(t => t.id === task.id ? updatedTask : t)
+                            };
+                            setViewTasksUser(updatedUser);
+
+                            // Re-fetch in background
+                            setTimeout(fetchUsers, 500);
+                            toast.success("Marked as done (Local view)");
+                          }}
+                        />
+                      ))
+                  )}
+                </TabsContent>
+
+                <TabsContent value="completed" className="mt-0 space-y-4 pb-4">
+                  {viewTasksUser?.tasks?.filter(t => t.completed).length === 0 ? (
+                    <div className="text-center py-12 border-2 border-dashed rounded-lg text-muted-foreground">
+                      <p>No completed tasks yet.</p>
+                    </div>
+                  ) : (
+                    viewTasksUser?.tasks?.filter(t => t.completed)
+                      .sort((a, b) => new Date(b.created_at || "").getTime() - new Date(a.created_at || "").getTime())
+                      .map(task => (
+                        <div key={task.id} className="opacity-75">
+                          <TaskCard task={task} onComplete={() => { }} />
+                        </div>
+                      ))
+                  )}
+                </TabsContent>
+              </ScrollArea>
+            </Tabs>
+          </SheetContent>
+        </Sheet>
+      </main>
+    </div>
   );
 }
