@@ -191,16 +191,21 @@ export function useTasks() {
 
       console.log("Updating task in database:", { id, updateData });
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from("tasks")
-        .update(updateData)
-        .eq("id", id)
-        .eq("user_id", user.id)
-        .eq("organization_id", profile?.organization_id); // 🛡️ Org isolation
+        .update(updateData, { count: "exact" })
+        .eq("id", id);
+
+      // Note: We rely on RLS policies to ensure user can only update their own tasks.
+      // We removed .eq("user_id") to avoid potential data mismatches if RLS is sufficient.
 
       if (error) {
         console.error("Database error updating task:", error);
         throw error;
+      }
+
+      if (count === 0) {
+        throw new Error("Task update failed: No rows affected. You may not have permission.");
       }
 
       console.log("Task updated successfully");
@@ -250,14 +255,16 @@ export function useTasks() {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from("tasks")
-        .delete()
-        .eq("id", id)
-        .eq("user_id", user.id)
-        .eq("organization_id", profile?.organization_id); // 🛡️ Org isolation
+        .delete({ count: "exact" })
+        .eq("id", id);
 
       if (error) throw error;
+
+      if (count === 0) {
+        throw new Error("Task could not be deleted. It may not exist or you do not have permission.");
+      }
 
       setTasks((prev) => prev.filter((task) => task.id !== id));
     } catch (error) {

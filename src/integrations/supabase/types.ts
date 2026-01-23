@@ -173,6 +173,7 @@ export type Database = {
           google_sync_status: string | null
           google_sync_error: string | null
           google_last_synced_at: string | null
+          client_email: string | null
         }
         Insert: {
           category: string
@@ -195,6 +196,7 @@ export type Database = {
           google_sync_status?: string | null
           google_sync_error?: string | null
           google_last_synced_at?: string | null
+          client_email?: string | null
         }
         Update: {
           category?: string
@@ -217,6 +219,7 @@ export type Database = {
           google_sync_status?: string | null
           google_sync_error?: string | null
           google_last_synced_at?: string | null
+          client_email?: string | null
         }
         Relationships: [
           {

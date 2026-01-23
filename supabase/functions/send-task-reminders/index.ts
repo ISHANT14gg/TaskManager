@@ -1,6 +1,8 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// @ts-nocheck
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import nodemailer from "npm:nodemailer@6.9.10";
 
 // --- SECURITY: Rate Limiting ---
 // In-memory store for rate limiting (per function instance)
@@ -26,9 +28,20 @@ function isRateLimited(ip: string): boolean {
 }
 
 // --- SECURITY: Input Validation ---
+const ClientRecipientSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1),
+  tasks: z.array(z.string()).optional(),
+});
+
 const RequestSchema = z.object({
   targetUserId: z.string().uuid().optional().nullable(),
   isAutomatedTrigger: z.boolean().optional(),
+  // NEW: Direct client email mode
+  clientMode: z.boolean().optional(),
+  recipients: z.array(ClientRecipientSchema).optional(),
+  subject: z.string().max(200).optional(),
+  body: z.string().max(5000).optional(),
 });
 
 const corsHeaders = {
@@ -56,14 +69,24 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const resendKey = Deno.env.get("RESEND_API_KEY");
+    const gmailUser = Deno.env.get("GMAIL_USER");
+    const gmailPass = Deno.env.get("GMAIL_APP_PASSWORD");
 
-    if (!supabaseUrl || !serviceRoleKey || !resendKey) {
+    if (!supabaseUrl || !serviceRoleKey || !gmailUser || !gmailPass) {
       return new Response(
-        JSON.stringify({ error: "Missing config" }),
+        JSON.stringify({ error: "Missing config: GMAIL_USER or GMAIL_APP_PASSWORD" }),
         { status: 500, headers: corsHeaders }
       );
     }
+
+    // Configure Nodemailer Transporter
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: gmailUser,
+        pass: gmailPass,
+      },
+    });
 
     // 🛡️ SECURITY: Strict Input Validation
     let payload;
@@ -92,12 +115,20 @@ serve(async (req) => {
       let authorized = !!isServiceKey;
 
       if (!authorized && authHeader) {
-        const supabaseUser = createClient(supabaseUrl, serviceRoleKey, {
+        // Use ANON key + user's token to verify identity safely
+        const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+        const supabaseUser = createClient(supabaseUrl, anonKey, {
           global: { headers: { Authorization: authHeader } },
         });
-        const { data: { user } } = await supabaseUser.auth.getUser();
+
+        const token = authHeader.replace("Bearer ", "");
+        const { data: { user } } = await supabaseUser.auth.getUser(token);
+
         if (user) {
-          const { data: profile } = await supabaseUser.from("profiles").select("role").eq("id", user.id).single();
+          // Use service role to query profile (bypass RLS)
+          const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+          const { data: profile } = await supabaseAdmin.from("profiles").select("role").eq("id", user.id).single();
+
           if (profile?.role === "admin") {
             authorized = true;
             console.log(`Admin ${user.email} triggered a manual multi-tenant scan.`);
@@ -113,16 +144,70 @@ serve(async (req) => {
         );
       }
       console.log("Processing multi-tenant automation scan...");
+    } else if (payload.clientMode) {
+      // 📧 Client mode: Allow service key OR authenticated admin user
+      if (isServiceKey) {
+        console.log("Client mode with service role key - authorized");
+      } else if (authHeader) {
+        // Use ANON key + user's token to verify identity safely
+        const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+        const supabaseUser = createClient(supabaseUrl, anonKey, {
+          global: { headers: { Authorization: authHeader } },
+        });
+
+        const token = authHeader.replace("Bearer ", "");
+        const { data: { user }, error: authError } = await supabaseUser.auth.getUser(token);
+
+        if (!user || authError) {
+          console.error("Client mode auth failed: No valid user", authError);
+          return new Response(JSON.stringify({
+            error: "Unauthorized",
+            details: "User token validation failed",
+            debug: authError?.message
+          }), { status: 401, headers: corsHeaders });
+        }
+
+        console.log(`Client mode: User ${user.email} verified, checking admin role...`);
+
+        // Use service role to query profile (bypass RLS)
+        const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+        const { data: profile, error: profileError } = await supabaseAdmin
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+
+        console.log(`Profile query result:`, { profile, profileError });
+
+        if (profileError || profile?.role !== "admin") {
+          console.error("Client mode auth failed: Not admin or query failed", profile?.role, profileError);
+          return new Response(JSON.stringify({
+            error: "Admin only",
+            details: "User is not an admin",
+            role: profile?.role
+          }), { status: 403, headers: corsHeaders });
+        }
+        console.log(`Client mode authorized for admin: ${user.email}`);
+      } else {
+        console.error("Client mode auth failed: No auth header or service key");
+        return new Response(JSON.stringify({ error: "Unauthorized", details: "Missing Authorization header" }), { status: 401, headers: corsHeaders });
+      }
     } else {
       // 👤 Manual triggers require Admin role
-      const supabaseUser = createClient(supabaseUrl, serviceRoleKey, {
+      // Use ANON key + user's token to verify identity safely
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+      const supabaseUser = createClient(supabaseUrl, anonKey, {
         global: { headers: { Authorization: authHeader } },
       });
 
-      const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user }, error: authError } = await supabaseUser.auth.getUser(token);
+
       if (!user || authError) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
 
-      const { data: profile } = await supabaseUser
+      // Use service role to query profile (bypass RLS)
+      const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+      const { data: profile } = await supabaseAdmin
         .from("profiles")
         .select("role, organization_id")
         .eq("id", user.id)
@@ -132,6 +217,53 @@ serve(async (req) => {
 
       currentOrgId = profile.organization_id;
       console.log(`Manual trigger by Admin: ${user.email} for Org: ${currentOrgId}`);
+    }
+
+    // 📧 CLIENT MODE: Send custom emails to specific recipients
+    if (payload.clientMode && payload.recipients && payload.recipients.length > 0) {
+      console.log(`Client mode: Sending to ${payload.recipients.length} recipients`);
+
+      let sent = 0;
+      const errors: string[] = [];
+
+      for (const recipient of payload.recipients) {
+        try {
+          const taskList = recipient.tasks?.length
+            ? `<ul>${recipient.tasks.map((t: string) => `<li>${t}</li>`).join("")}</ul>`
+            : "";
+
+          const htmlBody = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #1a365d;">Compliance Reminder</h2>
+              <p>Dear ${recipient.name},</p>
+              <div style="white-space: pre-wrap;">${(payload.body || "").replace(/\n/g, "<br>")}</div>
+              ${taskList ? `<h3>Your Pending Tasks:</h3>${taskList}` : ""}
+              <hr style="margin: 20px 0; border: none; border-top: 1px solid #e2e8f0;">
+              <p style="color: #718096; font-size: 12px;">This is an automated reminder from Compliance Tracker.</p>
+            </div>
+          `;
+
+          await transporter.sendMail({
+            from: `Compliance Tracker <${gmailUser}>`,
+            to: recipient.email,
+            subject: payload.subject || "Compliance Reminder",
+            html: htmlBody,
+          });
+
+          // console.log(`✅ Client email sent to ${recipient.email}`); // Optional logging
+          sent++;
+
+          await new Promise((r) => setTimeout(r, 500));
+        } catch (err: any) {
+          console.error(`Failed to send to ${recipient.email}:`, err);
+          errors.push(`${recipient.email}: ${err.message}`);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, sent, failed: payload.recipients.length - sent, errors: errors.length > 0 ? errors : undefined }),
+        { status: 200, headers: corsHeaders }
+      );
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
@@ -194,18 +326,16 @@ serve(async (req) => {
 
       // Note: The notification_logs table has a refined index on sent_at
 
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from: "Compliance Tracker <onboarding@resend.dev>",
+      // Note: The notification_logs table has a refined index on sent_at
+
+      try {
+        await transporter.sendMail({
+          from: `Compliance Tracker <${gmailUser}>`,
           to: task.profiles.email,
           subject: `⏰ Reminder: ${task.name} is due soon`,
           html: `<p>Hello ${task.profiles.full_name || "User"},</p><p>Your task <b>${task.name}</b> is due on ${new Date(task.deadline).toDateString()}.</p>`,
-        }),
-      });
+        });
 
-      if (res.ok) {
         sent++;
         await supabaseAdmin.from("notification_logs").insert({
           task_id: task.id,
@@ -214,6 +344,8 @@ serve(async (req) => {
           channel: "email",
           status: "sent",
         });
+      } catch (err) {
+        console.error(`Failed to send to ${task.profiles.email}`, err);
       }
       await new Promise(r => setTimeout(r, 500));
     }

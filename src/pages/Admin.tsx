@@ -56,6 +56,7 @@ import { TaskCard } from "@/components/dashboard/TaskCard";
 import { CalendarView } from "@/components/dashboard/CalendarView";
 import { CreateTaskDialog } from "@/components/dashboard/CreateTaskDialog";
 import { TasksTabContent } from "@/components/dashboard/TasksTabContent";
+import { ClientRemindersTab } from "@/components/dashboard/ClientRemindersTab";
 import { AnalyticsCharts } from "@/components/dashboard/AnalyticsCharts";
 import { profileSchema } from "@/lib/validations";
 
@@ -210,13 +211,27 @@ export default function Admin() {
   const handleTestAutomation = async () => {
     setTestingAutomation(true);
     try {
-      const { data, error } = await supabase.functions.invoke("send-task-reminders", {
-        body: { isAutomatedTrigger: true },
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const { data: sessionData } = await supabase.auth.getSession();
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/send-task-reminders`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${sessionData.session?.access_token}`,
+        },
+        body: JSON.stringify({ isAutomatedTrigger: true }),
       });
-      if (error) throw error;
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error("Automation error body:", data);
+        throw new Error(data.details || data.error || "Function call failed");
+      }
+
       toast.success(data.message || "Automation scan completed!");
     } catch (error: any) {
-      console.error("Automation test error:", error);
       toast.error(error.message || "Failed to run automation scan");
     } finally {
       setTestingAutomation(false);
@@ -414,6 +429,10 @@ export default function Admin() {
             <TabsTrigger value="automation" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 font-medium text-slate-500">
               <Clock className="h-4 w-4 mr-2" />
               Automation
+            </TabsTrigger>
+            <TabsTrigger value="client-reminders" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 font-medium text-slate-500">
+              <Mail className="h-4 w-4 mr-2" />
+              Client Reminders
             </TabsTrigger>
           </TabsList>
 
@@ -713,6 +732,11 @@ export default function Admin() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          {/* CLIENT REMINDERS TAB */}
+          <TabsContent value="client-reminders">
+            <ClientRemindersTab />
           </TabsContent>
 
           {/* USERS TAB - REDESIGNED */}

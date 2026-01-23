@@ -10,6 +10,7 @@ export interface ComplianceTask {
   deadline: Date;
   client_name?: string;
   client_phone?: string;
+  client_email?: string;
   recurrence: RecurrenceType;
   completed: boolean;
   completedAt?: Date;

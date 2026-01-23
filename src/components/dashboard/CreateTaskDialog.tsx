@@ -55,6 +55,7 @@ export function CreateTaskDialog({
         recurrence: "none",
         client_name: "",
         client_phone: "",
+        client_email: "",
         amount: "", // Note: Schema update pending for this field
     });
 
@@ -95,6 +96,7 @@ export function CreateTaskDialog({
                 description: formData.description.trim() || undefined,
                 client_name: formData.client_name.trim() || undefined,
                 client_phone: formData.client_phone.trim() || undefined,
+                client_email: formData.client_email.trim() || undefined,
                 recurrence: formData.recurrence === "none" ? "one-time" : formData.recurrence,
             });
 
@@ -114,6 +116,7 @@ export function CreateTaskDialog({
                 description: taskData.description || null,
                 client_name: taskData.client_name || null,
                 client_phone: taskData.client_phone || null,
+                client_email: (taskData as any).client_email || null,
                 recurrence: taskData.recurrence,
                 deadline: taskData.deadline.toISOString(),
                 completed: false,
@@ -125,7 +128,7 @@ export function CreateTaskDialog({
             onTaskCreated();
             onOpenChange(false);
             // Reset form
-            setFormData({ name: "", category: "General", description: "", recurrence: "none", client_name: "", client_phone: "", amount: "" });
+            setFormData({ name: "", category: "General", description: "", recurrence: "none", client_name: "", client_phone: "", client_email: "", amount: "" });
             setDate(new Date());
         } catch (error: any) {
             console.error("Error creating task:", error);
@@ -260,6 +263,18 @@ export function CreateTaskDialog({
                                 maxLength={15}
                             />
                         </div>
+                    </div>
+
+                    <div className="grid gap-2">
+                        <Label htmlFor="client_email">Client Email</Label>
+                        <Input
+                            id="client_email"
+                            type="email"
+                            placeholder="client@example.com"
+                            value={formData.client_email}
+                            onChange={(e) => setFormData({ ...formData, client_email: e.target.value.substring(0, 100) })}
+                            maxLength={100}
+                        />
                     </div>
 
                     <div className="grid gap-2">
