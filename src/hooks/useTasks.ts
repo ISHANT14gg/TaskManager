@@ -124,7 +124,7 @@ export function useTasks() {
 
       setTasks((prev) => [...prev, newTask]);
 
-      // 📅 Sync to Google Calendar (fire and forget - don't block UI)
+      // 📅 Sync to Google Calendar (fire and forget - but notify on error)
       syncTaskToCalendar({
         id: data.id,
         name: data.name,
@@ -135,8 +135,23 @@ export function useTasks() {
         completed: false,
         user_id: user.id,
       }, "create")
-        .then(result => console.log("Calendar sync result:", result))
-        .catch((err) => console.error("Calendar sync skipped:", err));
+        .then(result => {
+          console.log("Calendar sync result:", result);
+          if (!result.success) {
+            toast.error(`Calendar Sync Failed: ${result.reason || result.error || "Unknown error"}`);
+          } else if (result.htmlLink) {
+            toast.success("Synced to Google Calendar", {
+              action: {
+                label: "Open",
+                onClick: () => window.open(result.htmlLink, "_blank"),
+              },
+            });
+          }
+        })
+        .catch((err) => {
+          console.error("Calendar sync skipped:", err);
+          toast.error(`Calendar Sync Error: ${err.message}`);
+        });
 
       return newTask;
     } catch (error) {
@@ -243,7 +258,13 @@ export function useTasks() {
           deadline: (updates.deadline || currentTask.deadline).toISOString(),
           completed: updates.completed ?? currentTask.completed,
           user_id: user.id,
-        }, syncAction).catch((err) => console.log("Calendar sync skipped:", err));
+        }, syncAction)
+          .then(result => {
+            if (!result.success) {
+              toast.error(`Calendar Sync Failed: ${result.reason || result.error || "Unknown error"}`);
+            }
+          })
+          .catch((err) => console.log("Calendar sync skipped:", err));
       }
     } catch (error) {
       console.error("Error updating task:", error);

@@ -223,10 +223,7 @@ serve(async (req) => {
     if (payload.clientMode && payload.recipients && payload.recipients.length > 0) {
       console.log(`Client mode: Sending to ${payload.recipients.length} recipients`);
 
-      let sent = 0;
-      const errors: string[] = [];
-
-      for (const recipient of payload.recipients) {
+      const emailPromises = payload.recipients.map(async (recipient) => {
         try {
           const taskList = recipient.tasks?.length
             ? `<ul>${recipient.tasks.map((t: string) => `<li>${t}</li>`).join("")}</ul>`
@@ -243,25 +240,27 @@ serve(async (req) => {
             </div>
           `;
 
-          await transporter.sendMail({
+          const info = await transporter.sendMail({
             from: `Compliance Tracker <${gmailUser}>`,
             to: recipient.email,
             subject: payload.subject || "Compliance Reminder",
             html: htmlBody,
           });
 
-          // console.log(`✅ Client email sent to ${recipient.email}`); // Optional logging
-          sent++;
-
-          await new Promise((r) => setTimeout(r, 500));
+          console.log(`✅ Email sent to ${recipient.email}. MessageID: ${info.messageId}`);
+          return { success: true, email: recipient.email, messageId: info.messageId };
         } catch (err: any) {
           console.error(`Failed to send to ${recipient.email}:`, err);
-          errors.push(`${recipient.email}: ${err.message}`);
+          return { success: false, email: recipient.email, error: err.message };
         }
-      }
+      });
+
+      const results = await Promise.all(emailPromises);
+      const sent = results.filter(r => r.success).length;
+      const errors = results.filter(r => !r.success).map(r => `${r.email}: ${r.error}`);
 
       return new Response(
-        JSON.stringify({ success: true, sent, failed: payload.recipients.length - sent, errors: errors.length > 0 ? errors : undefined }),
+        JSON.stringify({ success: true, sent, failed: errors.length, errors: errors.length > 0 ? errors : undefined }),
         { status: 200, headers: corsHeaders }
       );
     }

@@ -159,6 +159,8 @@ serve(async (req) => {
         const calendarId = tokenData.calendar_id || "primary";
         const calendarBaseUrl = `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`;
 
+        console.log(`Syncing task ${task.id} to calendar ${calendarId} (Action: ${action})`);
+
         let result: { eventId?: string; success: boolean; error?: string; htmlLink?: string } = { success: false };
 
         if (action === "create") {
@@ -189,7 +191,7 @@ serve(async (req) => {
                     .eq("id", task.id);
             } else {
                 const errorText = await response.text();
-                console.error("Failed to create event:", errorText);
+                console.error(`FAILED to create event for task ${task.id}:`, errorText);
                 result = { success: false, error: errorText };
 
                 await supabase

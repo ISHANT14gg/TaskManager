@@ -174,7 +174,8 @@ export function ClientRemindersTab() {
     const [hiddenCategoryNames, setHiddenCategoryNames] = useState<string[]>([]);
 
     const activeCategories = useMemo(() => {
-        return [...PREDEFINED_CATEGORIES.filter(c => !hiddenCategoryNames.includes(c)), ...customCategories];
+        const combined = [...PREDEFINED_CATEGORIES.filter(c => !hiddenCategoryNames.includes(c)), ...customCategories];
+        return Array.from(new Set(combined));
     }, [customCategories, hiddenCategoryNames]);
 
     const allCategories = useMemo(() => {
@@ -549,6 +550,7 @@ export function ClientRemindersTab() {
                 return;
             }
 
+            const startTime = Date.now();
             const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
             const response = await fetch(`${supabaseUrl}/functions/v1/send-task-reminders`, {
                 method: "POST",
@@ -571,6 +573,8 @@ export function ClientRemindersTab() {
                 throw new Error(data.details || data.error || "Function call failed");
             }
 
+            const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+
             if (data?.errors && data.errors.length > 0) {
                 console.warn("Some emails failed:", data.errors);
                 // Check for common Resend error
@@ -578,10 +582,10 @@ export function ClientRemindersTab() {
                 if (resendError) {
                     toast.error("Resend Free Tier: Can only send to your verified email address.");
                 } else {
-                    toast.warning(`Sent ${data.sent} emails, ${data.failed} failed`);
+                    toast.warning(`Sent ${data.sent} emails in ${duration}s, ${data.failed} failed`);
                 }
             } else {
-                toast.success(`Sent reminders to ${data?.sent || recipients.length} clients`);
+                toast.success(`Sent reminders to ${data?.sent || recipients.length} clients in ${duration}s`);
             }
             setSelectedClients(new Set());
         } catch (error: any) {
