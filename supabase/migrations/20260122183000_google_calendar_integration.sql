@@ -20,15 +20,19 @@ CREATE TABLE IF NOT EXISTS public.user_google_tokens (
 ALTER TABLE public.user_google_tokens ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policy: Users can only access their own tokens
+DROP POLICY IF EXISTS "Users can view own tokens" ON public.user_google_tokens;
 CREATE POLICY "Users can view own tokens" ON public.user_google_tokens
     FOR SELECT USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can insert own tokens" ON public.user_google_tokens;
 CREATE POLICY "Users can insert own tokens" ON public.user_google_tokens
     FOR INSERT WITH CHECK (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can update own tokens" ON public.user_google_tokens;
 CREATE POLICY "Users can update own tokens" ON public.user_google_tokens
     FOR UPDATE USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can delete own tokens" ON public.user_google_tokens;
 CREATE POLICY "Users can delete own tokens" ON public.user_google_tokens
     FOR DELETE USING (user_id = auth.uid());
 

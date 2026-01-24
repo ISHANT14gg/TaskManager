@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { ComplianceTask, RecurrenceType, RECURRENCE_OPTIONS } from "@/types/task";
 import {
   Dialog,
@@ -60,13 +60,10 @@ export function TaskDialog({
   /* ===============================
      Fetch categories from DB
   ================================ */
-  useEffect(() => {
-    if (profile?.organization_id) {
-      fetchCategories();
-    }
-  }, [profile?.organization_id]);
-
-  const fetchCategories = async () => {
+  /* ===============================
+     Fetch categories from DB
+  ================================ */
+  const fetchCategories = useCallback(async () => {
     if (!profile?.organization_id) return;
     const { data } = await supabase
       .from("categories")
@@ -82,7 +79,13 @@ export function TaskDialog({
         }))
       );
     }
-  };
+  }, [profile?.organization_id]);
+
+  useEffect(() => {
+    if (profile?.organization_id) {
+      fetchCategories();
+    }
+  }, [profile?.organization_id, fetchCategories]);
 
   /* ===============================
      Populate form on edit
@@ -157,7 +160,8 @@ export function TaskDialog({
     }
 
     // Cast to any then to specific type to bypass strict Omit mismatch if Zod inference is slightly off
-    const taskData = validation.data as any;
+    // Cast to unknown then to specific type to ensure compatibility while avoiding 'any'
+    const taskData = validation.data as unknown as Omit<ComplianceTask, "id" | "completed">;
 
     if (isEditing && task && onUpdate) {
       onUpdate(task.id, taskData);

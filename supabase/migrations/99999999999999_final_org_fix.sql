@@ -58,6 +58,12 @@ DROP POLICY IF EXISTS "task_select_all_admin" ON public.tasks;
 DROP POLICY IF EXISTS "task_insert_all_admin" ON public.tasks;
 DROP POLICY IF EXISTS "task_update_all_admin" ON public.tasks;
 
+-- Idempotency: Drop policies we are about to create
+DROP POLICY IF EXISTS "task_select_all" ON public.tasks;
+DROP POLICY IF EXISTS "task_insert_all" ON public.tasks;
+DROP POLICY IF EXISTS "task_update_all" ON public.tasks;
+DROP POLICY IF EXISTS "task_delete_all" ON public.tasks;
+
 -- SELECT: Users see their org's tasks, Admins see EVERYTHING
 CREATE POLICY "task_select_all" ON public.tasks FOR SELECT 
 USING (organization_id = (SELECT organization_id FROM public.profiles WHERE id = auth.uid()) OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');

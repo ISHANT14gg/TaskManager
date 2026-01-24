@@ -20,6 +20,7 @@ DROP POLICY IF EXISTS "delete_own_tasks" ON public.tasks;
 -- Users can delete a task if:
 -- A) They are the creator (user_id matches)
 -- B) They are an admin
+DROP POLICY IF EXISTS "enhanced_delete_policy" ON public.tasks;
 CREATE POLICY "enhanced_delete_policy" ON public.tasks FOR DELETE
 USING (
   user_id = auth.uid() 
@@ -31,6 +32,7 @@ USING (
 DROP POLICY IF EXISTS "allow_update_tasks_in_org" ON public.tasks;
 DROP POLICY IF EXISTS "task_update_all" ON public.tasks;
 
+DROP POLICY IF EXISTS "enhanced_update_policy" ON public.tasks;
 CREATE POLICY "enhanced_update_policy" ON public.tasks FOR UPDATE
 USING (
   user_id = auth.uid() 

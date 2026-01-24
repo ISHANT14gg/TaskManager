@@ -40,6 +40,20 @@ ALTER TABLE public.notification_logs ALTER COLUMN organization_id SET NOT NULL;
 -- 5. Harden RLS Policies (Drop and Recreate with Org Checks)
 
 -- --- PROFILES ---
+
+-- Ensure is_admin exists locally for this migration to succeed if it was missing
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
+  )
+$$;
+
 DROP POLICY IF EXISTS "Users can view own profile or admins can view all" ON public.profiles;
 CREATE POLICY "Users can view own profile or admins can view all in org"
   ON public.profiles FOR SELECT

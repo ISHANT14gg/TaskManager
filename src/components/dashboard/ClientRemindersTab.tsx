@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,55 +73,109 @@ export function ClientRemindersTab() {
         `Dear Client,\n\nThis is a friendly reminder regarding your upcoming compliance deadlines. Please review and take necessary action.\n\nBest regards,\nCompliance Team`
     );
 
-    // Manual client input
-    const [manualClients, setManualClients] = useState<ClientInfo[]>([]);
+    // Persistent clients from DB
+    const [dbClients, setDbClients] = useState<ClientInfo[]>([]);
     const [newClientName, setNewClientName] = useState("");
     const [newClientEmail, setNewClientEmail] = useState("");
 
     // Category system
-    const [clientCategories, setClientCategories] = useState<Record<string, string>>(() => {
-        const saved = localStorage.getItem("clientCategories");
-        return saved ? JSON.parse(saved) : {};
-    });
-    const [customCategories, setCustomCategories] = useState<string[]>(() => {
-        const saved = localStorage.getItem("customCategories");
-        return saved ? JSON.parse(saved) : [];
-    });
+    const [clientCategories, setClientCategories] = useState<Record<string, string>>({});
+    const [customCategories, setCustomCategories] = useState<string[]>([]);
     // Hidden clients (deleted from view)
-    const [hiddenClients, setHiddenClients] = useState<string[]>(() => {
-        const saved = localStorage.getItem("hiddenClients");
-        return saved ? JSON.parse(saved) : [];
-    });
+    const [hiddenClients, setHiddenClients] = useState<string[]>([]);
     const [activeCategory, setActiveCategory] = useState<string>("all");
     const [newCategoryName, setNewCategoryName] = useState("");
     const [addCategoryOpen, setAddCategoryOpen] = useState(false);
 
-    // Persist categories to localStorage
+    // Fetch all settings on load
     useEffect(() => {
-        localStorage.setItem("clientCategories", JSON.stringify(clientCategories));
-    }, [clientCategories]);
+        if (!profile?.organization_id) return;
 
-    useEffect(() => {
-        localStorage.setItem("customCategories", JSON.stringify(customCategories));
-    }, [customCategories]);
+        const loadAllSettings = async () => {
+            try {
+                // 1. Fetch Client Settings (Assignments & Hidden status)
+                const { data: settingsData } = await supabase
+                    .from("client_settings")
+                    .select("*")
+                    .eq("organization_id", profile.organization_id);
 
+                if (settingsData) {
+                    const newCategories: Record<string, string> = {};
+                    const newHiddenClients: string[] = [];
+
+                    settingsData.forEach(s => {
+                        if (s.category) newCategories[s.client_name] = s.category;
+                        if (s.is_hidden) newHiddenClients.push(s.client_name);
+                    });
+
+                    setClientCategories(newCategories);
+                    setHiddenClients(newHiddenClients);
+                }
+
+                // 2. Fetch Hidden Categories
+                const { data: hiddenCatsData } = await supabase
+                    .from("hidden_categories")
+                    .select("category_name")
+                    .eq("organization_id", profile.organization_id);
+
+                if (hiddenCatsData) {
+                    setHiddenCategoryNames(hiddenCatsData.map(c => c.category_name));
+                }
+
+                // 3. Fetch Custom Categories
+                const { data: catData } = await supabase
+                    .from("categories")
+                    .select("name")
+                    .eq("organization_id", profile.organization_id);
+
+                if (catData) {
+                    setCustomCategories(catData.map(c => c.name));
+                }
+
+            } catch (error) {
+                console.error("Error loading settings:", error);
+            }
+        };
+
+        loadAllSettings();
+    }, [profile?.organization_id]);
+
+    const fetchDbClients = useCallback(async () => {
+        try {
+            const { data, error } = await supabase
+                .from("clients")
+                .select("*")
+                .eq("organization_id", profile?.organization_id);
+
+            if (error) throw error;
+
+            const formatted = (data || []).map(c => ({
+                name: c.name,
+                email: c.email || "",
+                taskCount: 0,
+                pendingTasks: [],
+                isManual: true, // Treat as manual for delete logic
+                id: c.id // Keep ID for deletion
+            }));
+            setDbClients(formatted);
+        } catch (error) {
+            console.error("Error fetching clients:", error);
+        }
+    }, [profile?.organization_id]);
+
+    // Fetch persistent clients on load
     useEffect(() => {
-        localStorage.setItem("hiddenClients", JSON.stringify(hiddenClients));
-    }, [hiddenClients]);
+        if (profile?.organization_id) {
+            fetchDbClients();
+        }
+    }, [profile?.organization_id, fetchDbClients]);
 
     // Hidden predefined categories
-    const [hiddenCategoryNames, setHiddenCategoryNames] = useState<string[]>(() => {
-        const saved = localStorage.getItem("hiddenCategoryNames");
-        return saved ? JSON.parse(saved) : [];
-    });
-
-    useEffect(() => {
-        localStorage.setItem("hiddenCategoryNames", JSON.stringify(hiddenCategoryNames));
-    }, [hiddenCategoryNames]);
+    const [hiddenCategoryNames, setHiddenCategoryNames] = useState<string[]>([]);
 
     const activeCategories = useMemo(() => {
         return [...PREDEFINED_CATEGORIES.filter(c => !hiddenCategoryNames.includes(c)), ...customCategories];
-    }, [customCategories, hiddenCategoryNames, customCategories]);
+    }, [customCategories, hiddenCategoryNames]);
 
     const allCategories = useMemo(() => {
         return [...PREDEFINED_CATEGORIES, ...customCategories];
@@ -130,13 +184,7 @@ export function ClientRemindersTab() {
     // For dropdowns, use active categories
     const dropdownCategories = activeCategories;
 
-    useEffect(() => {
-        if (profile?.organization_id) {
-            fetchTasks();
-        }
-    }, [profile?.organization_id]);
-
-    const fetchTasks = async () => {
+    const fetchTasks = useCallback(async () => {
         if (!profile?.organization_id) return;
         setLoading(true);
         try {
@@ -156,7 +204,13 @@ export function ClientRemindersTab() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [profile?.organization_id]);
+
+    useEffect(() => {
+        if (profile?.organization_id) {
+            fetchTasks();
+        }
+    }, [profile?.organization_id, fetchTasks]);
 
     // Group tasks by client name
     const clients = useMemo(() => {
@@ -187,10 +241,31 @@ export function ClientRemindersTab() {
     }, [tasks]);
 
     // Merge task clients with manual clients and filter hidden ones
+    // Merge task clients with DB clients and filter hidden ones
     const allClients = useMemo(() => {
-        const merged = [...clients, ...manualClients];
+        // Create a map to merge task clients and DB clients by name
+        const mergedMap = new Map<string, ClientInfo>();
+
+        // Add DB clients first
+        dbClients.forEach(c => mergedMap.set(c.name.toLowerCase(), c));
+
+        // Overlay task clients (they have task counts)
+        clients.forEach(c => {
+            const existing = mergedMap.get(c.name.toLowerCase());
+            if (existing) {
+                // Merge details: Task client takes precedence for task counts, but preserve ID/email if better
+                existing.taskCount = c.taskCount;
+                existing.pendingTasks = c.pendingTasks;
+                if (!existing.email && c.email) existing.email = c.email;
+                existing.isManual = false; // It has tasks now
+            } else {
+                mergedMap.set(c.name.toLowerCase(), c);
+            }
+        });
+
+        const merged = Array.from(mergedMap.values());
         return merged.filter(c => !hiddenClients.includes(c.name));
-    }, [clients, manualClients, hiddenClients]);
+    }, [clients, dbClients, hiddenClients]);
 
     // Filter clients by search and category
     const filteredClients = useMemo(() => {
@@ -213,16 +288,31 @@ export function ClientRemindersTab() {
         return result;
     }, [allClients, searchQuery, activeCategory, clientCategories]);
 
-    // Handle category assignment
-    const handleCategoryChange = (clientName: string, category: string) => {
+    // Handle category assignment (Persist to DB)
+    const handleCategoryChange = async (clientName: string, category: string) => {
+        const newCategory = category === "none" ? null : category;
+
+        // Optimistic Update
         setClientCategories(prev => ({
             ...prev,
-            [clientName]: category === "none" ? "" : category,
+            [clientName]: newCategory || ""
         }));
+
+        try {
+            await supabase.from("client_settings").upsert({
+                organization_id: profile?.organization_id,
+                client_name: clientName,
+                category: newCategory,
+                updated_at: new Date().toISOString()
+            }, { onConflict: "organization_id,client_name" });
+        } catch (error) {
+            console.error("Error saving category:", error);
+            toast.error("Failed to save category preference");
+        }
     };
 
     // Add new custom category
-    const handleAddCategory = () => {
+    const handleAddCategory = async () => {
         const trimmed = newCategoryName.trim();
         if (!trimmed) {
             toast.error("Please enter a category name");
@@ -232,35 +322,114 @@ export function ClientRemindersTab() {
             toast.error("This category already exists");
             return;
         }
+
+        // Optimistic
         setCustomCategories(prev => [...prev, trimmed]);
         setNewCategoryName("");
         setAddCategoryOpen(false);
-        toast.success(`Added category: ${trimmed}`);
+
+        try {
+            await supabase.from("categories").insert({
+                organization_id: profile?.organization_id,
+                name: trimmed
+            });
+            toast.success(`Added category: ${trimmed}`);
+        } catch (error) {
+            console.error("Error adding category:", error);
+            toast.error("Failed to save category");
+        }
     };
 
     // Delete/Hide category
-    const handleDeleteCategory = (category: string) => {
-        if (PREDEFINED_CATEGORIES.includes(category as any)) {
-            setHiddenCategoryNames(prev => [...prev, category]);
-            toast.success(`Category "${category}" removed from view`);
-        } else {
-            setCustomCategories(prev => prev.filter(c => c !== category));
-            toast.success(`Category "${category}" deleted`);
-        }
-
+    const handleDeleteCategory = async (category: string) => {
         // Reset active category if deleted
         if (activeCategory === category) setActiveCategory("all");
+
+        if (PREDEFINED_CATEGORIES.includes(category as any)) {
+            // Hide it
+            setHiddenCategoryNames(prev => [...prev, category]); // Optimistic
+            try {
+                await supabase.from("hidden_categories").insert({
+                    organization_id: profile?.organization_id,
+                    category_name: category
+                });
+                toast.success(`Category "${category}" removed from view`);
+            } catch (error) {
+                console.error("Error hiding category:", error);
+            }
+        } else {
+            // Delete custom
+            setCustomCategories(prev => prev.filter(c => c !== category)); // Optimistic
+            try {
+                await supabase.from("categories").delete()
+                    .eq("organization_id", profile?.organization_id)
+                    .eq("name", category);
+                toast.success(`Category "${category}" deleted`);
+            } catch (error) {
+                console.error("Error deleting category:", error);
+                toast.error("Failed to delete category");
+            }
+        }
     };
 
-    // Delete client (Manual -> Delete, Task -> Hide)
-    const handleDeleteClient = (clientName: string) => {
-        if (manualClients.some(c => c.name === clientName)) {
-            setManualClients(prev => prev.filter(c => c.name !== clientName));
-            toast.success(`Removed manual client "${clientName}"`);
+    const handleToggleCategory = async (cat: string) => {
+        const isHidden = hiddenCategoryNames.includes(cat);
+
+        // Optimistic
+        if (isHidden) {
+            setHiddenCategoryNames(prev => prev.filter(c => c !== cat));
         } else {
-            // It's a system client, hide it
+            setHiddenCategoryNames(prev => [...prev, cat]);
+        }
+
+        try {
+            if (isHidden) {
+                // Show (Delete from hidden)
+                await supabase.from("hidden_categories").delete()
+                    .eq("organization_id", profile?.organization_id)
+                    .eq("category_name", cat);
+            } else {
+                // Hide (Insert to hidden)
+                await supabase.from("hidden_categories").insert({
+                    organization_id: profile?.organization_id,
+                    category_name: cat
+                });
+            }
+        } catch (error) {
+            console.error("Error toggling category:", error);
+        }
+    };
+
+    // Delete client (Manual -> Delete from DB, Task -> Hide)
+    const handleDeleteClient = async (clientName: string) => {
+        const client = dbClients.find(c => c.name === clientName);
+
+        if (client && client.id) {
+            // It's in the DB, delete it
+            try {
+                const { error } = await supabase.from("clients").delete().eq("id", client.id);
+                if (error) throw error;
+                toast.success(`Removed client "${clientName}"`);
+                fetchDbClients();
+            } catch (error) {
+                console.error("Error deleting client:", error);
+                toast.error("Failed to delete client");
+            }
+        } else {
+            // It's a system/task-only client, hide it locally & persist
             setHiddenClients(prev => [...prev, clientName]);
-            toast.success(`Removed "${clientName}" from list`);
+            try {
+                await supabase.from("client_settings").upsert({
+                    organization_id: profile?.organization_id,
+                    client_name: clientName,
+                    is_hidden: true,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: "organization_id,client_name" });
+                toast.success(`Removed "${clientName}" from list`);
+            } catch (error) {
+                console.error("Error hiding client:", error);
+                toast.error("Failed to hide client");
+            }
         }
         // Remove from selection if selected
         if (selectedClients.has(clientName)) {
@@ -272,10 +441,8 @@ export function ClientRemindersTab() {
 
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
-            const allWithEmail = filteredClients
-                .filter(c => getClientEmail(c.name))
-                .map(c => c.name);
-            setSelectedClients(new Set(allWithEmail));
+            const allNames = filteredClients.map(c => c.name);
+            setSelectedClients(new Set(allNames));
         } else {
             setSelectedClients(new Set());
         }
@@ -303,30 +470,52 @@ export function ClientRemindersTab() {
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     };
 
-    const handleAddManualClient = () => {
-        if (!newClientName.trim()) {
+    const handleAddManualClient = async () => {
+        const trimmedName = newClientName.trim();
+        if (!trimmedName) {
             toast.error("Please enter a client name");
             return;
         }
-        if (!newClientEmail.trim() || !validateEmail(newClientEmail)) {
+        if (newClientEmail.trim() && !validateEmail(newClientEmail)) {
             toast.error("Please enter a valid email address");
             return;
         }
-        if (allClients.some(c => c.name.toLowerCase() === newClientName.trim().toLowerCase())) {
+
+        // Check if currently visible
+        if (allClients.some(c => c.name.toLowerCase() === trimmedName.toLowerCase())) {
             toast.error("A client with this name already exists");
             return;
         }
 
-        setManualClients(prev => [...prev, {
-            name: newClientName.trim(),
-            email: newClientEmail.trim(),
-            taskCount: 0,
-            pendingTasks: [],
-            isManual: true,
-        }]);
-        setNewClientName("");
-        setNewClientEmail("");
-        toast.success(`Added ${newClientName.trim()} to the list`);
+        // Check if hidden (restore if so)
+        if (hiddenClients.some(c => c.toLowerCase() === trimmedName.toLowerCase())) {
+            setHiddenClients(prev => prev.filter(c => c.toLowerCase() !== trimmedName.toLowerCase()));
+            // Unhide in DB
+            await supabase.from("client_settings").upsert({
+                organization_id: profile?.organization_id,
+                client_name: trimmedName,
+                is_hidden: false
+            }, { onConflict: "organization_id,client_name" });
+        }
+
+        try {
+            const { error } = await supabase.from("clients").insert({
+                organization_id: profile?.organization_id,
+                name: trimmedName,
+                email: newClientEmail.trim() || null
+            });
+
+            if (error) throw error;
+
+            toast.success(`Added ${trimmedName} to directory`);
+            setNewClientName("");
+            setNewClientEmail("");
+            setActiveCategory("all");
+            fetchDbClients(); // Refresh list
+        } catch (error: any) {
+            console.error("Error adding client:", error);
+            toast.error(error.message || "Failed to add client");
+        }
     };
 
     const handleSendReminders = async () => {
@@ -541,13 +730,7 @@ export function ClientRemindersTab() {
                                                         variant="ghost"
                                                         size="sm"
                                                         className="h-6 w-6 p-0"
-                                                        onClick={() => {
-                                                            if (isHidden) {
-                                                                setHiddenCategoryNames(prev => prev.filter(p => p !== cat));
-                                                            } else {
-                                                                setHiddenCategoryNames(prev => [...prev, cat]);
-                                                            }
-                                                        }}
+                                                        onClick={() => handleToggleCategory(cat)}
                                                         title={isHidden ? "Show Category" : "Hide Category"}
                                                     >
                                                         {isHidden ? <Plus className="h-4 w-4 text-green-500" /> : <X className="h-4 w-4 text-muted-foreground" />}
@@ -613,7 +796,7 @@ export function ClientRemindersTab() {
                                         <TableRow>
                                             <TableHead className="w-[40px]">
                                                 <Checkbox
-                                                    checked={selectedClients.size === filteredClients.filter(c => getClientEmail(c.name)).length && selectedClients.size > 0}
+                                                    checked={selectedClients.size === filteredClients.length && filteredClients.length > 0}
                                                     onCheckedChange={handleSelectAll}
                                                 />
                                             </TableHead>
@@ -634,7 +817,6 @@ export function ClientRemindersTab() {
                                                         <Checkbox
                                                             checked={selectedClients.has(client.name)}
                                                             onCheckedChange={(checked) => handleSelectClient(client.name, !!checked)}
-                                                            disabled={!isValid}
                                                         />
                                                     </TableCell>
                                                     <TableCell className="font-medium">{client.name}</TableCell>

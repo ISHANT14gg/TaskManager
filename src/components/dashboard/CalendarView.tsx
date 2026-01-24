@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -27,13 +27,7 @@ export function CalendarView() {
     const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (profile) {
-            fetchTasks();
-        }
-    }, [profile]);
-
-    const fetchTasks = async () => {
+    const fetchTasks = useCallback(async () => {
         if (!profile) return;
         try {
             const { data, error } = await supabase
@@ -59,7 +53,13 @@ export function CalendarView() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [profile]);
+
+    useEffect(() => {
+        if (profile) {
+            fetchTasks();
+        }
+    }, [profile, fetchTasks]);
 
     const eventStyleGetter = (event: CalendarEvent) => {
         let backgroundColor = 'hsl(var(--primary))';

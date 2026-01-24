@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -9,19 +9,16 @@ import { Loader2, PieChart as PieChartIcon, BarChart as BarChartIcon } from "luc
 
 import { useAuth } from "@/hooks/useAuth";
 
+type CategoryData = { name: string; value: number };
+type StatusData = { name: string; value: number; fill: string };
+
 export function AnalyticsCharts() {
     const { profile } = useAuth();
     const [loading, setLoading] = useState(true);
-    const [categoryData, setCategoryData] = useState<any[]>([]);
-    const [statusData, setStatusData] = useState<any[]>([]);
+    const [categoryData, setCategoryData] = useState<CategoryData[]>([]);
+    const [statusData, setStatusData] = useState<StatusData[]>([]);
 
-    useEffect(() => {
-        if (profile) {
-            fetchAnalytics();
-        }
-    }, [profile]);
-
-    const fetchAnalytics = async () => {
+    const fetchAnalytics = useCallback(async () => {
         if (!profile) return;
         try {
             const { data: tasks, error } = await supabase
@@ -57,7 +54,13 @@ export function AnalyticsCharts() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [profile]);
+
+    useEffect(() => {
+        if (profile) {
+            fetchAnalytics();
+        }
+    }, [profile, fetchAnalytics]);
 
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
